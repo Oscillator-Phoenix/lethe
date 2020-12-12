@@ -73,13 +73,13 @@ type Collection interface {
 	Get(key []byte, readOptions ReadOptions) ([]byte, error)
 
 	// Put creates or updates an key-val entry in the Collection.
-	Put(key, val []byte) error
+	Put(key, val []byte, writeOptions WriteOptions) error
 
 	// Del deletes a key-val entry from the Collection.
-	Del(key []byte) error
+	Del(key []byte, writeOptions WriteOptions) error
 
-	// SecondaryRangeDelete deletes the range [lowKey, highKey] on the secondary key
-	SecondaryRangeDelete(lowKey, highKey []byte) error
+	// RangeDel deletes the range [lowKey, highKey] on the secondary key
+	RangeDel(lowKey, highKey []byte, writeOptions WriteOptions) error
 
 	// Options returns the options currently being used.
 	Options() CollectionOptions

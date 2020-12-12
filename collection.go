@@ -37,19 +37,19 @@ func (lsm *collection) Get(key []byte, readOptions ReadOptions) ([]byte, error) 
 }
 
 // Put creates or updates an key-val entry in the Collection.
-func (lsm *collection) Put(key, val []byte) error {
+func (lsm *collection) Put(key, val []byte, writeOptions WriteOptions) error {
 	// TODO
 	return nil
 }
 
 // Del deletes a key-val entry from the Collection.
-func (lsm *collection) Del(key []byte) error {
+func (lsm *collection) Del(key []byte, writeOptions WriteOptions) error {
 	// TODO
 	return nil
 }
 
-// SecondaryRangeDelete deletes the range [lowKey, highKey] on the secondary key
-func (lsm *collection) SecondaryRangeDelete(lowKey, highKey []byte) error {
+// RangeDel deletes key-val entry ranged [lowKey, highKey]
+func (lsm *collection) RangeDel(lowKey, highKey []byte, writeOptions WriteOptions) error {
 	return nil
 }
 
