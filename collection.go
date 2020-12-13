@@ -63,7 +63,11 @@ func (lsm *collection) Put(key, value []byte, writeOptions *WriteOptions) error 
 
 // Del deletes a key-val entry from the Collection.
 func (lsm *collection) Del(key []byte, writeOptions *WriteOptions) error {
-	// TODO
+
+	if err := lsm.currentMemTable.Del(key); err != nil {
+		return err
+	}
+
 	return nil
 }
 

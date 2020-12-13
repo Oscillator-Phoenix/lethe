@@ -34,14 +34,14 @@ func TestRandomLevel(t *testing.T) {
 
 func simpleExample() *SkipList {
 	sl := NewSkipList(intLessFunc)
-	simpleExamplePut(&sl)
-	return &sl
+	simpleExamplePut(sl)
+	return sl
 }
 
 func simpleExampleWith(probability float32, maxLevel int) *SkipList {
 	sl := NewSkipListWith(intLessFunc, probability, maxLevel)
-	simpleExamplePut(&sl)
-	return &sl
+	simpleExamplePut(sl)
+	return sl
 }
 
 func simpleExamplePut(sl *SkipList) {
@@ -148,8 +148,8 @@ func TestInsert2(t *testing.T) {
 	for i := 0; i < len(scales); i++ {
 		xs := newRandomInts(scales[i])
 		sl := NewSkipList(intLessFunc)
-		build(xs, &sl)
-		check(xs, &sl)
+		build(xs, sl)
+		check(xs, sl)
 
 		if (i+1)%5 == 0 {
 			fmt.Printf("tests %d / %d (size: %d) passed\n", i+1, len(scales), len(xs))
@@ -157,12 +157,12 @@ func TestInsert2(t *testing.T) {
 	}
 }
 
-// func TestSkipListString(t *testing.T) {
-// 	sl1 := simpleExample()
-// 	fmt.Println(sl1)
+func TestSkipListString(t *testing.T) {
+	sl1 := simpleExample()
+	fmt.Println(sl1)
 
-// 	fmt.Println()
+	fmt.Println()
 
-// 	sl2 := simpleExampleWith(0.4, 32)
-// 	fmt.Println(sl2)
-// }
+	sl2 := simpleExampleWith(0.4, 32)
+	fmt.Println(sl2)
+}

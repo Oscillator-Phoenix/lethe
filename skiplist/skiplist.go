@@ -2,7 +2,6 @@ package skiplist
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -172,7 +171,7 @@ func (sl *SkipList) Put(key, value []byte) error {
 // Del the kv entry by key
 func (sl *SkipList) Del(key []byte) error {
 	if sl.Empty() {
-		return errors.New("empty skiplist")
+		return nil
 	}
 
 	update := make([]*skipListNode, sl.maxLevel)
@@ -229,7 +228,7 @@ func (sl SkipList) String() string {
 
 		x := sl.head.forwards[i]
 		for x != nil {
-			fmt.Fprintf(&b, "%s -> ", string(x.key)) // bytes to string
+			fmt.Fprintf(&b, "%v -> ", x.key) // bytes to string
 			x = x.forwards[i]
 		}
 

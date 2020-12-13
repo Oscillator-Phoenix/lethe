@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-// TODO
 func TestBasic1(t *testing.T) {
 	c, err := lethe.NewCollection(lethe.DefaultCollectionOptions)
 	if err != nil {
@@ -17,11 +16,14 @@ func TestBasic1(t *testing.T) {
 	c.Start()
 	defer c.Close()
 
-	batchSize := 1000 * 1000
+	batchSize := 1000 * 100
 	fmt.Println("genBatchKVA...")
 	ks, vs, as := genBatchKVA(batchSize)
 
 	ropts := &lethe.ReadOptions{}
+	wopts := &lethe.WriteOptions{}
+
+	// Get before Put
 	for i := 0; i < batchSize; i++ {
 		v, err := c.Get(ks[i], ropts)
 		if v != nil {
@@ -32,7 +34,7 @@ func TestBasic1(t *testing.T) {
 		}
 	}
 
-	wopts := &lethe.WriteOptions{}
+	// Put
 	for i := 0; i < batchSize; i++ {
 		if err = c.Put(ks[i], vs[i], wopts); err != nil {
 			t.Fatalf("Put\n")
@@ -40,6 +42,7 @@ func TestBasic1(t *testing.T) {
 		// t.Logf("Put [%s] [%s]\n", string(ks[i]), string(vs[i]))
 	}
 
+	// Get After Put
 	for i := 0; i < batchSize; i++ {
 		v, err := c.Get(ks[i], ropts)
 		if err != nil {
@@ -55,6 +58,25 @@ func TestBasic1(t *testing.T) {
 		}
 		if (i+1)%(batchSize/20) == 0 {
 			fmt.Printf("tests %d / %d passed\n", i+1, batchSize)
+		}
+	}
+
+	// Del
+	for i := 0; i < batchSize; i++ {
+		if err := c.Del(ks[i], wopts); err != nil {
+			t.Fatalf("Del: %v\n", err)
+		}
+	}
+
+	// Get After Del
+	for i := 0; i < batchSize; i++ {
+		v, err := c.Get(ks[i], ropts)
+		if v != nil {
+			t.Logf("%v\n", v)
+			t.Fatalf("Get: expected nil\n")
+		}
+		if err != lethe.ErrKeyNotFound {
+			t.Fatalf("Get: expected %v\n", lethe.ErrKeyNotFound)
 		}
 	}
 }
