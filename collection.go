@@ -1,5 +1,7 @@
 package lethe
 
+import "context"
+
 // A collection implements the Collection interface.
 type collection struct {
 	// config
@@ -8,6 +10,20 @@ type collection struct {
 
 	//
 	currentMemTable *memTable
+
+	// persistence
+	// cancel func of persistence, used in Close()
+	persistCancel context.CancelFunc
+
+	// compaction
+	// cancel func of compaction, used in Close()
+	compactCancel context.CancelFunc
+	// SO, Saturation-driven trigger and Overlap-driven file selection
+	soCompactionTrigger chan compactionTask
+	// SD, Saturation-driven trigger and Delete-driven file selection
+	sdCompactionTrigger chan compactionTask
+	// DD, delete-driven trigger and Delete-driven file selection
+	ddCompactionTrigger chan compactionTask
 }
 
 func newCollection(options *CollectionOptions) *collection {
@@ -21,16 +37,27 @@ func newCollection(options *CollectionOptions) *collection {
 
 func (lsm *collection) Start() error {
 
-	go lsm.persistDaemon()
-	go lsm.mergeDaemon()
+	persistCtx, persistCancel := context.WithCancel(context.Background())
+	compactCtx, compactCancel := context.WithCancel(context.Background())
+
+	lsm.persistCancel = persistCancel
+	lsm.compactCancel = compactCancel
+
+	go lsm.persistDaemon(persistCtx)
+	go lsm.compactDaemon(compactCtx)
 
 	return nil
 }
 
 // Close synchronously stops background goroutines.
 func (lsm *collection) Close() error {
-	// TODO
-	// some resource recycle
+
+	// stop lsm.persistDaemon()
+	lsm.persistCancel()
+
+	// stop lsm.compactDaemon()
+	lsm.compactCancel()
+
 	return nil
 }
 
