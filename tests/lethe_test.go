@@ -37,6 +37,6 @@ func TestBasic1(t *testing.T) {
 	}
 
 	if isEqualBatchBytes(vs, getVs) == false {
-		t.Fatalf("The value get is different to the value put.\n")
+		t.Fatalf("The value got is different to the value put.\n")
 	}
 }
