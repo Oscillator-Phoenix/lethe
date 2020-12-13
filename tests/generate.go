@@ -32,7 +32,9 @@ func newRandSeed() {
 }
 
 func genOneBytes(bytesLen int) []byte {
-	str := fmt.Sprintf("%0*v", bytesLen, rand.Int())
+	// str := fmt.Sprintf("%0*v", bytesLen, rand.Int())
+	str := fmt.Sprintf("%0*v", bytesLen, rand.Intn(10))
+
 	return []byte(str)[:bytesLen]
 }
 
@@ -47,8 +49,25 @@ func genBatchBytes(batchSize int, avgBytesLen int) [][]byte {
 	return keys
 }
 
-func genBatchKV(batchSize int) ([][]byte, [][]byte) {
+func genFinalValue(ks, vs [][]byte) [][]byte {
+	m := map[string]string{}
+	as := make([][]byte, len(vs))
+
+	for i := 0; i < len(ks); i++ {
+		m[string(ks[i])] = string(vs[i])
+	}
+	for i := 0; i < len(ks); i++ {
+		as[i] = []byte(m[string(ks[i])])
+	}
+
+	return as
+}
+
+// genBatchKVA generate (key, value, final-value)
+func genBatchKVA(batchSize int) ([][]byte, [][]byte, [][]byte) {
 	ks := genBatchBytes(batchSize, constAvgKeyLen)
 	vs := genBatchBytes(batchSize, constAvgValueLen)
-	return ks, vs
+	as := genFinalValue(ks, vs)
+
+	return ks, vs, as
 }

@@ -2,6 +2,7 @@ package skiplist
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -30,6 +31,7 @@ type skipListNode struct {
 }
 
 // SkipList is a sorted Key-Value map.
+// SkipList implements the sortedMemMap interface.
 type SkipList struct {
 	head *skipListNode
 
@@ -62,7 +64,7 @@ func newSkipListNode(key, value []byte, level int) *skipListNode {
 }
 
 // NewSkipList returns a skiplist using default configuration.
-func NewSkipList(less func(s, t []byte) bool) SkipList {
+func NewSkipList(less func(s, t []byte) bool) *SkipList {
 	var sl SkipList
 
 	sl._size = 0
@@ -75,11 +77,11 @@ func NewSkipList(less func(s, t []byte) bool) SkipList {
 
 	rand.Seed(time.Now().Unix()) // optional: reset random number seed
 
-	return sl
+	return &sl
 }
 
 // NewSkipListWith returns a skiplist using custom configuration.
-func NewSkipListWith(less func(s, t []byte) bool, probability float32, maxLevel int) SkipList {
+func NewSkipListWith(less func(s, t []byte) bool, probability float32, maxLevel int) *SkipList {
 	var sl SkipList
 
 	sl._size = 0
@@ -92,7 +94,7 @@ func NewSkipListWith(less func(s, t []byte) bool, probability float32, maxLevel 
 
 	rand.Seed(time.Now().Unix()) // optional: reset random number seed
 
-	return sl
+	return &sl
 }
 
 // randomLevel returns a random level according to configuration
@@ -170,7 +172,7 @@ func (sl *SkipList) Put(key, value []byte) error {
 // Del the kv entry by key
 func (sl *SkipList) Del(key []byte) error {
 	if sl.Empty() {
-		return nil
+		return errors.New("empty skiplist")
 	}
 
 	update := make([]*skipListNode, sl.maxLevel)
@@ -197,7 +199,7 @@ func (sl *SkipList) Del(key []byte) error {
 	return nil
 }
 
-// Traverse traverses the skipList in the order defined by lessFunc
+// Traverse traverses the skipList in order defined by lessFunc
 func (sl *SkipList) Traverse(operate func(key, value []byte)) {
 	// itereate on level-0 which is a single linked list
 	x := sl.head.forwards[0]

@@ -32,15 +32,15 @@ func TestGenBatchBytes(t *testing.T) {
 	}
 }
 
-func TestGenBatchKV(t *testing.T) {
+func TestGenBatchKVA(t *testing.T) {
 	batchSize := 10
-	ks, vs := genBatchKV(batchSize)
+	ks, vs, as := genBatchKVA(batchSize)
 
 	if len(ks) != batchSize || len(vs) != batchSize {
 		t.Fail()
 	}
 
 	for i := 0; i < len(ks); i++ {
-		fmt.Printf("{ Key: %s, Value: %s}\n", string(ks[i]), string(vs[i]))
+		fmt.Printf("{ Key: %s, Value: %s, Final-Value: %s}\n", string(ks[i]), string(vs[i]), string(as[i]))
 	}
 }

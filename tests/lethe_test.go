@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"fmt"
 	"lethe"
 	"testing"
 )
@@ -16,27 +17,44 @@ func TestBasic1(t *testing.T) {
 	c.Start()
 	defer c.Close()
 
-	batchSize := 10
-	ks, vs := genBatchKV(batchSize)
+	batchSize := 1000 * 1000
+	fmt.Println("genBatchKVA...")
+	ks, vs, as := genBatchKVA(batchSize)
 
-	wopts := lethe.WriteOptions{}
-	for i := 0; i < len(ks); i++ {
+	ropts := &lethe.ReadOptions{}
+	for i := 0; i < batchSize; i++ {
+		v, err := c.Get(ks[i], ropts)
+		if v != nil {
+			t.Fatalf("Get\n")
+		}
+		if err != lethe.ErrKeyNotFound {
+			t.Fatalf("Get\n")
+		}
+	}
+
+	wopts := &lethe.WriteOptions{}
+	for i := 0; i < batchSize; i++ {
 		if err = c.Put(ks[i], vs[i], wopts); err != nil {
 			t.Fatalf("Put\n")
 		}
+		// t.Logf("Put [%s] [%s]\n", string(ks[i]), string(vs[i]))
 	}
 
-	ropts := lethe.ReadOptions{}
-	getVs := [][]byte{}
-	for i := 0; i < len(ks); i++ {
+	for i := 0; i < batchSize; i++ {
 		v, err := c.Get(ks[i], ropts)
-		if v == nil || err != nil {
-			t.Fatalf("Get\n")
+		if err != nil {
+			t.Fatalf("[%d/%d] Get %v\n", err, i, len(ks))
 		}
-		getVs = append(getVs, v)
-	}
-
-	if isEqualBatchBytes(vs, getVs) == false {
-		t.Fatalf("The value got is different to the value put.\n")
+		if v == nil {
+			t.Fatalf("[%d/%d] Get failed\n", i, len(ks))
+		}
+		if !isEqualOneBytes(v, as[i]) {
+			t.Logf("got %v\n", v)
+			t.Logf("expected %v\n", as[i])
+			t.Fatalf("[%d/%d] key[%s] got[%s], expected[%s].\n", i, len(ks), string(ks[i]), string(v), string(as[i]))
+		}
+		if (i+1)%(batchSize/20) == 0 {
+			fmt.Printf("tests %d / %d passed\n", i+1, batchSize)
+		}
 	}
 }

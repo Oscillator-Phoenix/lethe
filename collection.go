@@ -1,9 +1,5 @@
 package lethe
 
-import (
-	"fmt"
-)
-
 // A collection implements the Collection interface.
 type collection struct {
 	// config
@@ -11,6 +7,16 @@ type collection struct {
 	stats   *CollectionStats
 
 	//
+	currentMemTable *memTable
+}
+
+func newCollection(options *CollectionOptions) *collection {
+	c := &collection{}
+
+	c.options = options
+	c.currentMemTable = newMemTable(c.options.Less)
+
+	return c
 }
 
 func (lsm *collection) Start() error {
@@ -30,26 +36,39 @@ func (lsm *collection) Close() error {
 
 // Get retrieves a value by iterating over all the segments within
 // the collection, if the key is not found a nil val is returned.
-func (lsm *collection) Get(key []byte, readOptions ReadOptions) ([]byte, error) {
-	// TODO
-	value := []byte(fmt.Sprintf("Get value from key %s\n", string(key)))
-	return value, nil
+func (lsm *collection) Get(key []byte, readOptions *ReadOptions) ([]byte, error) {
+
+	// lookup on memory table
+	if v, isPresent := lsm.currentMemTable.Get(key); isPresent {
+		return v, nil
+	}
+
+	return nil, ErrKeyNotFound
 }
 
 // Put creates or updates an key-val entry in the Collection.
-func (lsm *collection) Put(key, val []byte, writeOptions WriteOptions) error {
-	// TODO
+func (lsm *collection) Put(key, value []byte, writeOptions *WriteOptions) error {
+
+	if err := lsm.currentMemTable.Put(key, value); err != nil {
+		return err
+	}
+
+	if lsm.currentMemTable.nBytes() > lsm.options.MemTableBytesLimit {
+		// do flush
+		// new memtable
+	}
+
 	return nil
 }
 
 // Del deletes a key-val entry from the Collection.
-func (lsm *collection) Del(key []byte, writeOptions WriteOptions) error {
+func (lsm *collection) Del(key []byte, writeOptions *WriteOptions) error {
 	// TODO
 	return nil
 }
 
 // RangeDel deletes key-val entry ranged [lowKey, highKey]
-func (lsm *collection) RangeDel(lowKey, highKey []byte, writeOptions WriteOptions) error {
+func (lsm *collection) RangeDel(lowKey, highKey []byte, writeOptions *WriteOptions) error {
 	return nil
 }
 

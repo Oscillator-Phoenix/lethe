@@ -22,6 +22,9 @@ var (
 // CollectionOptions allows applications to specify config settings.
 type CollectionOptions struct {
 
+	// Less defines the order of key
+	Less func(s, t []byte) bool
+
 	// IsPersist shows if the Collection needs persist.
 	IsPersist bool
 
@@ -31,11 +34,13 @@ type CollectionOptions struct {
 	// CreateIfMissing create a new Collection if filePath is not existed.
 	CreateIfMissing bool
 
-	// TODO
+	// MemTableBytesLimit the number of bytes of MemTable/Buffer
+	MemTableBytesLimit int
 }
 
 // DefaultCollectionOptions are the default configuration options.
 var DefaultCollectionOptions = CollectionOptions{
+	Less:            func(s, t []byte) bool { return string(s) < string(t) },
 	IsPersist:       false,
 	FilePath:        "",
 	CreateIfMissing: false,
@@ -70,16 +75,16 @@ type Collection interface {
 
 	// Get retrieves a value from the collection for a given key
 	// and returns nil if the key is not found.
-	Get(key []byte, readOptions ReadOptions) ([]byte, error)
+	Get(key []byte, readOptions *ReadOptions) ([]byte, error)
 
 	// Put creates or updates an key-val entry in the Collection.
-	Put(key, val []byte, writeOptions WriteOptions) error
+	Put(key, value []byte, writeOptions *WriteOptions) error
 
 	// Del deletes a key-val entry from the Collection.
-	Del(key []byte, writeOptions WriteOptions) error
+	Del(key []byte, writeOptions *WriteOptions) error
 
 	// RangeDel deletes the range [lowKey, highKey] on the secondary key
-	RangeDel(lowKey, highKey []byte, writeOptions WriteOptions) error
+	RangeDel(lowKey, highKey []byte, writeOptions *WriteOptions) error
 
 	// Options returns the options currently being used.
 	Options() CollectionOptions
@@ -143,9 +148,8 @@ type Batch interface {
 // NewCollection returns a new, unstarted Collection instance.
 func NewCollection(options CollectionOptions) (Collection, error) {
 
-	// TODO
 	// init collection
-	c := &collection{}
+	c := newCollection(&options)
 
 	return c, nil
 }
