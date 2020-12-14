@@ -11,9 +11,6 @@ func TestBasicUsage(t *testing.T) {
 	if err != nil {
 		fmt.Println(err)
 	}
-
-	// start a collection
-	c.Start()
 	defer c.Close()
 
 	// wtire

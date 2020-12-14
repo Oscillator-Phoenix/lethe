@@ -50,11 +50,6 @@ func newCollection(options *CollectionOptions) *collection {
 	lsm.sdCompactionTrigger = make(chan compactionTask, sdCompactionTriggerBufLen)
 	lsm.ddCompactionTrigger = make(chan compactionTask, ddCompactionTriggerBufLen)
 
-	return lsm
-}
-
-func (lsm *collection) Start() error {
-
 	persistCtx, persistCancel := context.WithCancel(context.Background())
 	compactCtx, compactCancel := context.WithCancel(context.Background())
 
@@ -64,7 +59,7 @@ func (lsm *collection) Start() error {
 	go lsm.persistDaemon(persistCtx)
 	go lsm.compactDaemon(compactCtx)
 
-	return nil
+	return lsm
 }
 
 // Close synchronously stops background goroutines.

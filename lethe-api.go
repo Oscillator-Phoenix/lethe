@@ -28,25 +28,27 @@ type CollectionOptions struct {
 	// Less defines the order of key
 	Less func(s, t []byte) bool
 
-	// IsPersist shows if the Collection needs persist.
-	IsPersist bool
-
-	// FilePath is the file path of the Collection.
-	FilePath string
-
-	// CreateIfMissing create a new Collection if filePath is not existed.
-	CreateIfMissing bool
-
 	// MemTableBytesLimit the number of bytes of MemTable/Buffer
 	MemTableBytesLimit int
+
+	// LevelSizeRatio is a factor that the capacity of Level_(i) is greater than that of Level_(i−1).
+	LevelSizeRatio float64
+
+	// persist
+	// Path is the file path of the Collection directory.
+	DirPath string
+
+	// CreateIfMissing create a new Collection if filePath is not existed.
+	CreateDirIfMissing bool
 }
 
 // DefaultCollectionOptions are the default configuration options.
 var DefaultCollectionOptions = CollectionOptions{
-	Less:            func(s, t []byte) bool { return string(s) < string(t) },
-	IsPersist:       false,
-	FilePath:        "",
-	CreateIfMissing: false,
+	Less:               func(s, t []byte) bool { return string(s) < string(t) }, //
+	MemTableBytesLimit: 64 * 1024,                                               // 64KB
+	LevelSizeRatio:     10.0,                                                    //
+	DirPath:            "",                                                      //
+	CreateDirIfMissing: false,                                                   //
 }
 
 // CollectionStats shows a status of collection.
@@ -69,8 +71,6 @@ type WriteOptions struct {
 // A Collection represents an ordered mapping of key-val entries,
 // where a Collection is snapshot'able and atomically updatable.
 type Collection interface {
-	// Start kicks off required background tasks.
-	Start() error
 
 	// Close synchronously stops background tasks and releases
 	// resources.

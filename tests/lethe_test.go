@@ -16,9 +16,6 @@ func TestBasic1(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewCollection\n")
 	}
-
-	// start a collection
-	c.Start()
 	defer c.Close()
 
 	batchSize := 1000 * 100

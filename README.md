@@ -11,26 +11,7 @@ lethe is a LSM-based KV database which is a reproduction of the paper [Lethe: A 
 basic usage like below:
 
 ```go
-c, err := lethe.NewCollection(lethe.DefaultCollectionOptions)
-if err != nil {
-    fmt.Println(err)
-}
-
-// start a collection
-c.Start()
-defer c.Close()
-
-// wtire
-wopts := &lethe.WriteOptions{}
-c.Put([]byte("car-0"), []byte("tesla"), wopts)
-c.Put([]byte("car-1"), []byte("honda"), wopts)
-
-// read
-ropts := &lethe.ReadOptions{}
-val0, err := c.Get([]byte("car-0"), ropts)         // val0 == []byte("tesla").
-valX, err := c.Get([]byte("car-not-there"), ropts) // valX == nil.
-val1, err := c.Get([]byte("car-1"), ropts)         // val1 == []byte("honda").
-
+// TODO
 ```
 
 Further, see [examples](./examples).
@@ -47,25 +28,42 @@ todo
 
 ### 2.1 Regular Task
 
-1. maintain [examples](./examples) following lastest version
+1. maintain [tests](./tests) following lastest modification
 
-2. maintain [doc](./doc) following lastest version
+2. maintain [examples](./examples) following lastest version
+
+3. maintain [doc](./doc) following lastest version
 
 ---
 
 ### 2.2 TODO Task
 
-1. (Simple) change `sync.Mutex` to `sync.RWMutex` if possible.
-2. (Simple) add write option: sync write.
-3. (Hard) add parallel compaction.
-4. (Hard) Write Ahead Log: atomic, recovery
-5. (Hard) add read-only `snapshot` feature: MVCC.
-6. (Medium) add actomic wirte `batch`. **Depend on 4**
+1. change `sync.Mutex` to `sync.RWMutex` if possible. (Easy, Performance)
+2. add write option: sync write. (Easy, Usability)
+3. add parallel compaction. (Hard, Performance)
+4. Write Ahead Log: atomic, recovery. (Hard, Performance, Usability)
+5. add read-only `snapshot`: MVCC. (Hard, Performance, Usability)
+6. add actomic wirte `batch`: **Depend on 4**. (Medium, Usability)
+7. support config file, using [toml](https://pkg.go.dev/github.com/BurntSushi/toml) format. (Medium, Usability)
+8. support cli of lethe. (Medium, Usability)
 
 ---
 
 ### 2.3 Bug Fix Task
 
-As far, no bug found.
+As far, with little test, no bug found.
 
 ---
+
+## 3. References
+
+### 3.1 Papers
+
+- [Lethe: A Tunable Delete-Aware LSM Engine](https://dl.acm.org/doi/10.1145/3318464.3389757)
+
+### 3.2 Projects
+
+- https://github.com/facebook/rocksdb
+- https://github.com/syndtr/goleveldb
+- https://github.com/couchbase/moss
+- https://github.com/boltdb/bolt
