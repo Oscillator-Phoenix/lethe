@@ -16,8 +16,9 @@ type collection struct {
 	options *CollectionOptions
 	stats   *CollectionStats
 
-	//
+	// data container
 	currentMemTable *memTable
+	levels          []level
 
 	// persistence
 	// cancel func of persistence, init in Start() and then used in Close()
@@ -83,8 +84,15 @@ func (lsm *collection) Close() error {
 func (lsm *collection) Get(key []byte, readOptions *ReadOptions) ([]byte, error) {
 
 	// lookup on memory table
-	if v, isPresent := lsm.currentMemTable.Get(key); isPresent {
-		return v, nil
+	if value, isPresent := lsm.currentMemTable.Get(key); isPresent {
+		return value, nil
+	}
+
+	// lookup on persisted levels
+	for i := 0; i < len(lsm.levels); i++ {
+		if value := lsm.levels[i].get(key); value != nil {
+			return value, nil
+		}
 	}
 
 	return nil, ErrKeyNotFound
@@ -113,6 +121,7 @@ func (lsm *collection) Put(key, value []byte, writeOptions *WriteOptions) error 
 // Del deletes a key-val entry from the Collection.
 func (lsm *collection) Del(key []byte, writeOptions *WriteOptions) error {
 
+	// TODO
 	if err := lsm.currentMemTable.Del(key); err != nil {
 		return err
 	}

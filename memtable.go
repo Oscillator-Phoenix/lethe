@@ -16,7 +16,7 @@ type sortedMemMap interface {
 }
 
 type memTable struct {
-	mu      sync.RWMutex
+	mu      sync.Mutex
 	smm     sortedMemMap
 	_nBytes int
 }
