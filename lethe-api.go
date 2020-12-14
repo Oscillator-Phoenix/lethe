@@ -1,6 +1,9 @@
 package lethe
 
-import "errors"
+import (
+	"errors"
+	"log"
+)
 
 var (
 	// ErrKeyNotFound is returned when the key is not found.
@@ -149,6 +152,7 @@ type Batch interface {
 func NewCollection(options CollectionOptions) (Collection, error) {
 
 	// init collection
+	log.Println("new collection")
 	c := newCollection(&options)
 
 	return c, nil

@@ -3,8 +3,13 @@ package tests
 import (
 	"fmt"
 	"lethe"
+	"log"
 	"testing"
 )
+
+func init() {
+	log.SetFlags(log.Ldate | log.Lmicroseconds | log.Llongfile)
+}
 
 func TestBasic1(t *testing.T) {
 	c, err := lethe.NewCollection(lethe.DefaultCollectionOptions)

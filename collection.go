@@ -2,6 +2,14 @@ package lethe
 
 import "context"
 
+const (
+	// TODO: to be a feild of collection.options
+	persistTriggerBufLen      = 5
+	soCompactionTriggerBufLen = 5
+	sdCompactionTriggerBufLen = 5
+	ddCompactionTriggerBufLen = 5
+)
+
 // A collection implements the Collection interface.
 type collection struct {
 	// config
@@ -12,11 +20,13 @@ type collection struct {
 	currentMemTable *memTable
 
 	// persistence
-	// cancel func of persistence, used in Close()
+	// cancel func of persistence, init in Start() and then used in Close()
 	persistCancel context.CancelFunc
+	// persist trigger
+	persistTrigger chan persistTask
 
 	// compaction
-	// cancel func of compaction, used in Close()
+	// cancel func of compaction, init in Start() and then used in Close()
 	compactCancel context.CancelFunc
 	// SO, Saturation-driven trigger and Overlap-driven file selection
 	soCompactionTrigger chan compactionTask
@@ -27,12 +37,19 @@ type collection struct {
 }
 
 func newCollection(options *CollectionOptions) *collection {
-	c := &collection{}
+	lsm := &collection{}
 
-	c.options = options
-	c.currentMemTable = newMemTable(c.options.Less)
+	lsm.options = options
 
-	return c
+	lsm.currentMemTable = newMemTable(lsm.options.Less)
+
+	lsm.persistTrigger = make(chan persistTask, persistTriggerBufLen)
+
+	lsm.soCompactionTrigger = make(chan compactionTask, soCompactionTriggerBufLen)
+	lsm.sdCompactionTrigger = make(chan compactionTask, sdCompactionTriggerBufLen)
+	lsm.ddCompactionTrigger = make(chan compactionTask, ddCompactionTriggerBufLen)
+
+	return lsm
 }
 
 func (lsm *collection) Start() error {
@@ -75,14 +92,19 @@ func (lsm *collection) Get(key []byte, readOptions *ReadOptions) ([]byte, error)
 
 // Put creates or updates an key-val entry in the Collection.
 func (lsm *collection) Put(key, value []byte, writeOptions *WriteOptions) error {
+	// TODO: WAL
 
+	// put KV into memTable
 	if err := lsm.currentMemTable.Put(key, value); err != nil {
 		return err
 	}
 
+	// if the capcity of memTable meet limit
 	if lsm.currentMemTable.nBytes() > lsm.options.MemTableBytesLimit {
-		// do flush
-		// new memtable
+		// lsm.persistTrigger <- persistTask{
+		// 	mt: lsm.currentMemTable,
+		// }
+		// lsm.currentMemTable = newMemTable(lsm.options.Less)
 	}
 
 	return nil

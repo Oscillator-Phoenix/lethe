@@ -3,6 +3,7 @@ package lethe
 import (
 	"context"
 	"fmt"
+	"log"
 )
 
 type compactionTask struct {
@@ -29,7 +30,8 @@ func (lsm *collection) compactDaemon(ctx context.Context) {
 			}
 		case <-ctx.Done():
 			{
-				// stop compaction daemon
+				log.Println("stop compaction daemon")
+
 				return
 			}
 		}
