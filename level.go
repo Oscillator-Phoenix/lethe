@@ -3,6 +3,7 @@ package lethe
 import (
 	"context"
 	"log"
+	"math"
 	"sync"
 	"time"
 )
@@ -18,41 +19,40 @@ type level struct {
 	files   []sstFile
 
 	// metadata
-	d float64
+	// ttl(time-to-live) is denoted by d_i in paper 4.1.2
+	ttl time.Duration
 
 	// compaction
-	ttlTicker               *time.Ticker
+
 	compactFromPrevNotifier chan struct{}
 	soCompactionTrigger     chan compactionTask
 	sdCompactionTrigger     chan compactionTask
 	ddCompactionTrigger     chan compactionTask
-	ttlDaemonCancel         context.CancelFunc
+	levelTTLDaemonCancel    context.CancelFunc
 }
 
-func newLevel(levelID int, so, sd, dd chan compactionTask) *level {
+func newLevel(levelID int, ttl time.Duration, so, sd, dd chan compactionTask) *level {
 	m := &level{}
 
 	m.levelID = levelID
 
-	m.d = m.computeD()
-	m.ttlTicker = time.NewTicker(time.Duration(m.d)) // TODO: set ttl according to m.d
+	m.ttl = ttl
 
-	m.compactFromPrevNotifier = make(chan struct{}, 1) // should be async, required buffer
+	m.compactFromPrevNotifier = make(chan struct{}, 1) // notifier should be async, required buffer
 
 	m.soCompactionTrigger = so
 	m.sdCompactionTrigger = sd
 	m.ddCompactionTrigger = dd
 
-	ttlDaemonCtx, ttlDaemonCancel := context.WithCancel(context.Background())
-	m.ttlDaemonCancel = ttlDaemonCancel
-	go m.ttlDaemon(ttlDaemonCtx)
+	ctx, cancel := context.WithCancel(context.Background())
+	m.levelTTLDaemonCancel = cancel
+	go m.levelTTLDaemon(ctx)
 
 	return m
 }
 
 func (m *level) close() {
-	m.ttlDaemonCancel()
-	m.ttlTicker.Stop()
+	m.levelTTLDaemonCancel()
 }
 
 func (m *level) compactFromPrevNotify() {
@@ -60,23 +60,12 @@ func (m *level) compactFromPrevNotify() {
 }
 
 // TTL
-func (m *level) ttlDaemon(ctx context.Context) {
+func (m *level) levelTTLDaemon(ctx context.Context) {
 	for {
 		select {
-		case <-m.compactFromPrevNotifier:
-			// If there are compaction from the prev level, this level reset ttl ticker
-			{
-				m.ttlTicker.Reset(time.Duration(m.d))
-			}
-		case <-m.ttlTicker.C:
-			// trigge compaction periodically aimed at enforcing a finite bound for delete persistence latency
-			{
-				// TODO
-				m.ddCompactionTrigger <- compactionTask{}
-			}
 		case <-ctx.Done():
 			{
-				log.Printf("stop ttlDaemon from Level %d\n", m.levelID)
+				log.Printf("stop levelTTLDaemon from Level %d\n", m.levelID)
 				return
 			}
 		}
@@ -87,16 +76,38 @@ func (m *level) get(key []byte) (value []byte) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// index : greater(newer file) ==> less(older file)
+	// if key is not found in newer file, search in older file, else retrun.
+	for i := len(m.files); i >= 0; i-- {
+		if value := m.files.get(key); value != nil {
+			return value
+		}
+	}
+
 	return nil
 }
 
-// paper 4.1.2
-func (m *level) computeD() float64 {
-	return 0.0
+// In paper 4.1.2 Computing d_i
+// deletePersistThreshold is denoted by D_th in paper 4.1.2
+// levelID is denoted by i in paper 4.1.2
+// levelSizeRatio is denoted by  T in paper 4.1.2
+// numOfLevel is denoted by L in paper 4.1.2
+// As the paper says, lethe re-calculates ttl after every buffer flush.
+func computeTTL(deletePersistThreshold time.Duration, levelID int, levelSizeRatio int, numOfLevel int) time.Duration {
+	Dth := float64(int(deletePersistThreshold))
+	i := float64(levelID)
+	T := float64(levelSizeRatio)
+	L := float64(numOfLevel)
+
+	d0 := Dth * (T - 1.0) / (math.Pow(T, L-1.0) - 1.0) // assert( math.Pow(T, L-1.0) != 1.0 )
+	di := d0 * math.Pow(T, i)
+
+	return time.Duration(int(di))
 }
 
-// paper 4.1.2
-// updating d
-func (m *level) updateD() {
-	m.d = 0.0
+func (m *level) updateTTL(ttl time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.ttl = ttl
 }

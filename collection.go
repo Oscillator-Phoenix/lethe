@@ -1,6 +1,9 @@
 package lethe
 
-import "context"
+import (
+	"context"
+	"sync"
+)
 
 const (
 	// TODO: to be a feild of collection.options
@@ -16,9 +19,12 @@ type collection struct {
 	options *CollectionOptions
 	stats   *CollectionStats
 
-	// data container
-	currentMemTable *memTable
-	levels          []level
+	// in-memory table
+	curMemTable      *memTable
+	curMemTableMutex sync.Mutex
+
+	// persisted levels
+	levels []level
 
 	// persistence
 	// cancel func of persistence, init in Start() and then used in Close()
@@ -42,22 +48,22 @@ func newCollection(options *CollectionOptions) *collection {
 
 	lsm.options = options
 
-	lsm.currentMemTable = newMemTable(lsm.options.Less)
+	lsm.curMemTable = newMemTable(lsm.options.PrimaryKeyLess)
 
 	lsm.persistTrigger = make(chan persistTask, persistTriggerBufLen)
 
-	lsm.soCompactionTrigger = make(chan compactionTask, soCompactionTriggerBufLen)
-	lsm.sdCompactionTrigger = make(chan compactionTask, sdCompactionTriggerBufLen)
-	lsm.ddCompactionTrigger = make(chan compactionTask, ddCompactionTriggerBufLen)
+	// lsm.soCompactionTrigger = make(chan compactionTask, soCompactionTriggerBufLen)
+	// lsm.sdCompactionTrigger = make(chan compactionTask, sdCompactionTriggerBufLen)
+	// lsm.ddCompactionTrigger = make(chan compactionTask, ddCompactionTriggerBufLen)
 
-	persistCtx, persistCancel := context.WithCancel(context.Background())
-	compactCtx, compactCancel := context.WithCancel(context.Background())
+	// persistCtx, persistCancel := context.WithCancel(context.Background())
+	// compactCtx, compactCancel := context.WithCancel(context.Background())
 
-	lsm.persistCancel = persistCancel
-	lsm.compactCancel = compactCancel
+	// lsm.persistCancel = persistCancel
+	// lsm.compactCancel = compactCancel
 
-	go lsm.persistDaemon(persistCtx)
-	go lsm.compactDaemon(compactCtx)
+	// go lsm.persistDaemon(persistCtx)
+	// go lsm.compactDaemon(compactCtx)
 
 	return lsm
 }
@@ -66,10 +72,10 @@ func newCollection(options *CollectionOptions) *collection {
 func (lsm *collection) Close() error {
 
 	// stop lsm.persistDaemon()
-	lsm.persistCancel()
+	// lsm.persistCancel()
 
 	// stop lsm.compactDaemon()
-	lsm.compactCancel()
+	// lsm.compactCancel()
 
 	return nil
 }
@@ -79,7 +85,7 @@ func (lsm *collection) Close() error {
 func (lsm *collection) Get(key []byte, readOptions *ReadOptions) ([]byte, error) {
 
 	// lookup on memory table
-	if value, isPresent := lsm.currentMemTable.Get(key); isPresent {
+	if value, isPresent := lsm.curMemTable.Get(key); isPresent {
 		return value, nil
 	}
 
@@ -94,30 +100,55 @@ func (lsm *collection) Get(key []byte, readOptions *ReadOptions) ([]byte, error)
 }
 
 // Put creates or updates an key-val entry in the Collection.
-func (lsm *collection) Put(key, value []byte, writeOptions *WriteOptions) error {
-	// TODO: WAL
+func (lsm *collection) Put(key, value, dKey []byte, writeOptions *WriteOptions) error {
+
+	// add lock to prevent from Put while changing curMemTable
+	lsm.curMemTableMutex.Lock()
+	mt := lsm.curMemTable
+	lsm.curMemTableMutex.Unlock()
 
 	// put KV into memTable
-	if err := lsm.currentMemTable.Put(key, value); err != nil {
+	if err := mt.Put(key, value); err != nil {
 		return err
 	}
 
 	// if the capcity of memTable meet limit
-	if lsm.currentMemTable.nBytes() > lsm.options.MemTableBytesLimit {
+	if lsm.curMemTable.nBytes() > lsm.options.MemTableBytesLimit {
+
+		// create a new sstFile
+
+		// commit a perstist task
 		// lsm.persistTrigger <- persistTask{
-		// 	mt: lsm.currentMemTable,
+		// 	mt: lsm.curMemTable,
 		// }
-		// lsm.currentMemTable = newMemTable(lsm.options.Less)
+
+		file := lsm.levels[0].addSSTFile(lsm.curMemTable)
+
+		lsm.curMemTableMutex.Lock()
+		lsm.curMemTable = newMemTable(lsm.options.PrimaryKeyLess)
+		lsm.curMemTableMutex.Unlock()
 	}
 
 	return nil
+}
+
+func (lsm *collection) compactIfNecessary() {
+
+	// for i := 0; i < len(lsm.levels)-1; i++ {
+	// 	if lsm.levels[i].nBytes() > limit {
+	// 		lsm.soCompactionTrigger <- compactionTask{
+	// 			curLevel: lsm.levels[i],
+	// 			nextLevel:lsm.levels[i+1]
+	// 		}
+	// 	} 
+	// }
 }
 
 // Del deletes a key-val entry from the Collection.
 func (lsm *collection) Del(key []byte, writeOptions *WriteOptions) error {
 
 	// TODO
-	if err := lsm.currentMemTable.Del(key); err != nil {
+	if err := lsm.curMemTable.Del(key); err != nil {
 		return err
 	}
 

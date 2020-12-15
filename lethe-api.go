@@ -3,6 +3,7 @@ package lethe
 import (
 	"errors"
 	"log"
+	"time"
 )
 
 var (
@@ -25,14 +26,17 @@ var (
 // CollectionOptions allows applications to specify config settings.
 type CollectionOptions struct {
 
-	// Less defines the order of key
-	Less func(s, t []byte) bool
+	// PrimaryKeyLess defines the order of primary key
+	PrimaryKeyLess func(s, t []byte) bool
+
+	// DeleteKeyLess defines the order of delete key
+	DeleteKeyLess func(s, t []byte) bool
 
 	// MemTableBytesLimit the number of bytes of MemTable/Buffer
 	MemTableBytesLimit int
 
 	// LevelSizeRatio is a factor that the capacity of Level_(i) is greater than that of Level_(i−1).
-	LevelSizeRatio float64
+	LevelSizeRatio int
 
 	// persist
 	// Path is the file path of the Collection directory.
@@ -40,15 +44,21 @@ type CollectionOptions struct {
 
 	// CreateIfMissing create a new Collection if filePath is not existed.
 	CreateDirIfMissing bool
+
+	// DeletePersistThreshold, all tombstones are persisted within a delete persistence threshold.
+	// DeletePersistThreshold is denoted by D_th in paper 4.1 .
+	DeletePersistThreshold time.Duration
 }
 
 // DefaultCollectionOptions are the default configuration options.
 var DefaultCollectionOptions = CollectionOptions{
-	Less:               func(s, t []byte) bool { return string(s) < string(t) }, //
-	MemTableBytesLimit: 64 * 1024,                                               // 64KB
-	LevelSizeRatio:     10.0,                                                    //
-	DirPath:            "",                                                      //
-	CreateDirIfMissing: false,                                                   //
+	PrimaryKeyLess:         func(s, t []byte) bool { return string(s) < string(t) }, //
+	DeleteKeyLess:          func(s, t []byte) bool { return string(s) < string(t) }, //
+	MemTableBytesLimit:     64 * 1024,                                               // 64KB
+	LevelSizeRatio:         10.0,                                                    //
+	DirPath:                "",                                                      //
+	CreateDirIfMissing:     false,                                                   //
+	DeletePersistThreshold: 24 * time.Hour,                                          // one day
 }
 
 // CollectionStats shows a status of collection.
@@ -81,7 +91,7 @@ type Collection interface {
 	Get(key []byte, readOptions *ReadOptions) ([]byte, error)
 
 	// Put creates or updates an key-val entry in the Collection.
-	Put(key, value []byte, writeOptions *WriteOptions) error
+	Put(key, value, dKey []byte, writeOptions *WriteOptions) error
 
 	// Del deletes a key-val entry from the Collection.
 	Del(key []byte, writeOptions *WriteOptions) error

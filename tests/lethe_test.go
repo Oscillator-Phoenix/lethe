@@ -14,7 +14,7 @@ func init() {
 func TestBasic1(t *testing.T) {
 	c, err := lethe.NewCollection(lethe.DefaultCollectionOptions)
 	if err != nil {
-		t.Fatalf("NewCollection\n")
+		t.Fatal("NewCollection\n")
 	}
 	defer c.Close()
 
@@ -32,14 +32,14 @@ func TestBasic1(t *testing.T) {
 			t.Fatalf("Get\n")
 		}
 		if err != lethe.ErrKeyNotFound {
-			t.Fatalf("Get\n")
+			t.Fatal("Get\n")
 		}
 	}
 
 	// Put
 	for i := 0; i < batchSize; i++ {
-		if err = c.Put(ks[i], vs[i], wopts); err != nil {
-			t.Fatalf("Put\n")
+		if err = c.Put(ks[i], vs[i], nil, wopts); err != nil {
+			t.Fatal("Put\n")
 		}
 		// t.Logf("Put [%s] [%s]\n", string(ks[i]), string(vs[i]))
 	}
