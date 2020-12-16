@@ -6,14 +6,6 @@ import (
 	"sync"
 )
 
-const (
-	// TODO: to be a feild of collection.options
-	persistTriggerBufLen      = 5
-	soCompactionTriggerBufLen = 5
-	sdCompactionTriggerBufLen = 5
-	ddCompactionTriggerBufLen = 5
-)
-
 // A collection implements the Collection interface.
 type collection struct {
 	// config
@@ -35,13 +27,8 @@ type collection struct {
 
 	// compaction
 	// cancel func of compaction, init in Start() and then used in Close()
-	compactCancel context.CancelFunc
-	// SO, Saturation-driven trigger and Overlap-driven file selection
-	soCompactionTrigger chan compactionTask
-	// SD, Saturation-driven trigger and Delete-driven file selection
-	sdCompactionTrigger chan compactionTask
-	// DD, delete-driven trigger and Delete-driven file selection
-	ddCompactionTrigger chan compactionTask
+	compactCancel  context.CancelFunc
+	compactTrigger chan compactTask
 }
 
 func newCollection(options *CollectionOptions) *collection {
@@ -53,20 +40,17 @@ func newCollection(options *CollectionOptions) *collection {
 
 	lsm.curMemTable = newMemTable(lsm.options.PrimaryKeyLess)
 
-	lsm.persistTrigger = make(chan persistTask, persistTriggerBufLen)
+	// persist
+	lsm.persistTrigger = make(chan persistTask, lsm.options.persistTriggerBufLen)
+	persistCtx, persistCancel := context.WithCancel(context.Background())
+	lsm.persistCancel = persistCancel
+	go lsm.persistDaemon(persistCtx)
 
-	// lsm.soCompactionTrigger = make(chan compactionTask, soCompactionTriggerBufLen)
-	// lsm.sdCompactionTrigger = make(chan compactionTask, sdCompactionTriggerBufLen)
-	// lsm.ddCompactionTrigger = make(chan compactionTask, ddCompactionTriggerBufLen)
-
-	// persistCtx, persistCancel := context.WithCancel(context.Background())
-	// compactCtx, compactCancel := context.WithCancel(context.Background())
-
-	// lsm.persistCancel = persistCancel
-	// lsm.compactCancel = compactCancel
-
-	// go lsm.persistDaemon(persistCtx)
-	// go lsm.compactDaemon(compactCtx)
+	// compact
+	lsm.compactTrigger = make(chan compactTask, lsm.options.compactTriggerBufLen)
+	compactCtx, compactCancel := context.WithCancel(context.Background())
+	lsm.compactCancel = compactCancel
+	go lsm.compactDaemon(compactCtx)
 
 	return lsm
 }
@@ -75,10 +59,10 @@ func newCollection(options *CollectionOptions) *collection {
 func (lsm *collection) Close() error {
 
 	// stop lsm.persistDaemon()
-	// lsm.persistCancel()
+	lsm.persistCancel()
 
 	// stop lsm.compactDaemon()
-	// lsm.compactCancel()
+	lsm.compactCancel()
 
 	return nil
 }
@@ -116,6 +100,8 @@ func (lsm *collection) Put(key, value, dKey []byte, writeOptions *WriteOptions) 
 		return err
 	}
 
+	// TODO
+
 	// // if the capcity of memTable meet limit
 	// if lsm.curMemTable.nBytes() > lsm.options.MemTableBytesLimit {
 
@@ -140,7 +126,7 @@ func (lsm *collection) compactIfNecessary() {
 
 	// for i := 0; i < len(lsm.levels)-1; i++ {
 	// 	if lsm.levels[i].nBytes() > limit {
-	// 		lsm.soCompactionTrigger <- compactionTask{
+	// 		lsm.soCompactionTrigger <- compactTask{
 	// 			curLevel: lsm.levels[i],
 	// 			nextLevel:lsm.levels[i+1]
 	// 		}

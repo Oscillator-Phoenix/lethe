@@ -1,6 +1,7 @@
 package lethe
 
 import (
+	"bytes"
 	"context"
 	"math"
 	"sync"
@@ -27,27 +28,26 @@ type level struct {
 
 	// compaction
 	compactFromPrevNotifier chan struct{}
-	soCompactionTrigger     chan compactionTask
-	sdCompactionTrigger     chan compactionTask
-	ddCompactionTrigger     chan compactionTask
+	compactTrigger          chan compactTask
 	levelTTLDaemonCancel    context.CancelFunc
 }
 
-func newLevel(levelID int, ttl time.Duration, so, sd, dd chan compactionTask) *level {
+func newLevel(levelID int, ttl time.Duration, compactTrigger chan compactTask) *level {
 	m := &level{}
 
 	m.levelID = levelID
 
 	m.ttl = ttl
 
-	m.soCompactionTrigger = so
-	m.sdCompactionTrigger = sd
-	m.ddCompactionTrigger = dd
+	m.compactTrigger = compactTrigger
+
+	// TODO
 
 	return m
 }
 
 func (m *level) close() {
+	// TODO
 }
 
 func (m *level) get(key []byte) (value []byte) {
@@ -58,11 +58,28 @@ func (m *level) get(key []byte) (value []byte) {
 	defer m.mu.Unlock()
 
 	pageGet := func(p *page) []byte {
+
+		// fence pointer check (i.e. primaryKeyMin <= key <= primaryKeyMax)
+		if m.primaryKeyLess(key, p.primaryKeyMin) || m.primaryKeyLess(p.primaryKeyMax, key) {
+			return nil
+		}
+
+		// page-granularity bloom filter existence check
+		if p.bloomFilterExists(key) == false {
+			return nil
+		}
+
 		// TODO
 		// load data form disk...
+		keys, values, _ := p.loadKVs()
 
 		// TODO
 		// binary search because entries within every page are sorted on primary key
+		for i := 0; i < len(keys); i++ {
+			if bytes.Equal(keys[i], key) {
+				return values[i]
+			}
+		}
 
 		return nil
 	}

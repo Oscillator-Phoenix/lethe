@@ -47,6 +47,14 @@ type CollectionOptions struct {
 	// DeletePersistThreshold, all tombstones are persisted within a delete persistence threshold.
 	// DeletePersistThreshold is denoted by D_th in paper 4.1 .
 	DeletePersistThreshold time.Duration
+
+	// ----------------------------------------------------------------------------
+
+	// Unexposed data filed
+	// buffer length of chan which is persistence trigger
+	persistTriggerBufLen int
+	// buffer length of chan which is comapction trigger
+	compactTriggerBufLen int
 }
 
 // DefaultCollectionOptions are the default configuration options.
@@ -58,6 +66,11 @@ var DefaultCollectionOptions = CollectionOptions{
 	DirPath:                "",                                                      //
 	CreateDirIfMissing:     false,                                                   //
 	DeletePersistThreshold: 24 * time.Hour,                                          // one day
+
+	// -------------------------------------------
+
+	persistTriggerBufLen: 5,
+	compactTriggerBufLen: 5,
 }
 
 // CollectionStats shows a status of collection.

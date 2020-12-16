@@ -6,27 +6,31 @@ import (
 	"log"
 )
 
-type compactionTask struct {
-	levelID   int
-	sstFileID int
+const (
+	enumCompactTypeSO = 1
+	enumCompactTypeSD = 2
+	enumCompactTypeDD = 3
+)
+
+type compactTask struct {
+	compactType int
+	levelID     int
+	sstFileID   int
+}
+
+func (task compactTask) String() string {
+	// TOOD
+	return "todo"
 }
 
 func (lsm *collection) compactDaemon(ctx context.Context) {
 	for {
-		var task compactionTask
 
 		select {
-		case task = <-lsm.soCompactionTrigger:
+		case task := <-lsm.compactTrigger:
 			{
-
-			}
-		case task = <-lsm.sdCompactionTrigger:
-			{
-
-			}
-		case task = <-lsm.ddCompactionTrigger:
-			{
-
+				// TODO
+				doCompatcion(ctx, task)
 			}
 		case <-ctx.Done():
 			{
@@ -36,10 +40,18 @@ func (lsm *collection) compactDaemon(ctx context.Context) {
 			}
 		}
 
-		doCompatcion(ctx, task)
 	}
 }
 
-func doCompatcion(ctx context.Context, task compactionTask) {
+func doCompatcion(ctx context.Context, task compactTask) {
+	if task.compactType == enumCompactTypeSO {
+		// TODO
+	}
+	if task.compactType == enumCompactTypeSD {
+		// TODO
+	}
+	if task.compactType == enumCompactTypeDD {
+		// TODO
+	}
 	fmt.Println(task)
 }
