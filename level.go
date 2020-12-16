@@ -2,7 +2,6 @@ package lethe
 
 import (
 	"context"
-	"log"
 	"math"
 	"sync"
 	"time"
@@ -15,15 +14,18 @@ import (
 
 type level struct {
 	levelID int
-	mu      sync.Mutex
-	files   []sstFile
+
+	primaryKeyLess func(s, t []byte) bool
+	deleteKeyLess  func(s, t []byte) bool
+
+	mu    sync.Mutex
+	files []*sstFile
 
 	// metadata
 	// ttl(time-to-live) is denoted by d_i in paper 4.1.2
 	ttl time.Duration
 
 	// compaction
-
 	compactFromPrevNotifier chan struct{}
 	soCompactionTrigger     chan compactionTask
 	sdCompactionTrigger     chan compactionTask
@@ -38,48 +40,72 @@ func newLevel(levelID int, ttl time.Duration, so, sd, dd chan compactionTask) *l
 
 	m.ttl = ttl
 
-	m.compactFromPrevNotifier = make(chan struct{}, 1) // notifier should be async, required buffer
-
 	m.soCompactionTrigger = so
 	m.sdCompactionTrigger = sd
 	m.ddCompactionTrigger = dd
-
-	ctx, cancel := context.WithCancel(context.Background())
-	m.levelTTLDaemonCancel = cancel
-	go m.levelTTLDaemon(ctx)
 
 	return m
 }
 
 func (m *level) close() {
-	m.levelTTLDaemonCancel()
-}
-
-func (m *level) compactFromPrevNotify() {
-	m.compactFromPrevNotifier <- struct{}{}
-}
-
-// TTL
-func (m *level) levelTTLDaemon(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			{
-				log.Printf("stop levelTTLDaemon from Level %d\n", m.levelID)
-				return
-			}
-		}
-	}
 }
 
 func (m *level) get(key []byte) (value []byte) {
+
+	// TODO: data race `compactDaemon` goroutine change files of level
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// index : greater(newer file) ==> less(older file)
-	// if key is not found in newer file, search in older file, else retrun.
+	pageGet := func(p *page) []byte {
+		// TODO
+		// load data form disk...
+
+		// TODO
+		// binary search because entries within every page are sorted on primary key
+
+		return nil
+	}
+
+	deleteTileGet := func(dt *deleteTile) []byte {
+		// fence pointer check (i.e. primaryKeyMin <= key <= primaryKeyMax)
+		if m.primaryKeyLess(key, dt.primaryKeyMin) || m.primaryKeyLess(dt.primaryKeyMax, key) {
+			return nil
+		}
+
+		// linear search because pages within a delete tile are sorted on delete key but not primary key
+		for i := 0; i < len(dt.pages); i++ {
+			if value := pageGet(dt.pages[i]); value != nil {
+				return value
+			}
+		}
+
+		return nil
+	}
+
+	sstFileGet := func(sf *sstFile) []byte {
+		// There are no repeated key in a sstFile.
+
+		// fence pointer check (i.e. primaryKeyMin <= key <= primaryKeyMax)
+		if m.primaryKeyLess(key, sf.primaryKeyMin) || m.primaryKeyLess(sf.primaryKeyMax, key) {
+			return nil
+		}
+
+		// TODO
+		// binary search because delete tiles within a sstfile are sorted on primary key
+		for i := 0; i < len(sf.tiles); i++ {
+			if value := deleteTileGet(sf.tiles[i]); value != nil {
+				return value
+			}
+		}
+
+		return nil
+	}
+
+	// index i : greater(newer file) ==> less(older file)
+	// if key is not found in newer file, search in older file.
 	for i := len(m.files); i >= 0; i-- {
-		if value := m.files.get(key); value != nil {
+		if value := sstFileGet(m.files[i]); value != nil {
 			return value
 		}
 	}
@@ -87,12 +113,12 @@ func (m *level) get(key []byte) (value []byte) {
 	return nil
 }
 
+// computeTTL is a pure function computing the TTL of a level
 // In paper 4.1.2 Computing d_i
-// deletePersistThreshold is denoted by D_th in paper 4.1.2
-// levelID is denoted by i in paper 4.1.2
-// levelSizeRatio is denoted by  T in paper 4.1.2
-// numOfLevel is denoted by L in paper 4.1.2
-// As the paper says, lethe re-calculates ttl after every buffer flush.
+// deletePersistThreshold is denoted by D_th
+// levelID is denoted by i
+// levelSizeRatio is denoted by T
+// numOfLevel is denoted by L
 func computeTTL(deletePersistThreshold time.Duration, levelID int, levelSizeRatio int, numOfLevel int) time.Duration {
 	Dth := float64(int(deletePersistThreshold))
 	i := float64(levelID)
@@ -105,9 +131,16 @@ func computeTTL(deletePersistThreshold time.Duration, levelID int, levelSizeRati
 	return time.Duration(int(di))
 }
 
+// updateTTL when a new level is added to LSM
 func (m *level) updateTTL(ttl time.Duration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// update TTL of this level
 	m.ttl = ttl
+
+	// update TTL for each file in this level
+	for i := len(m.files); i >= 0; i-- {
+		m.files[i].updateTTL(m.ttl)
+	}
 }

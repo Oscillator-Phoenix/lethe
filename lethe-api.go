@@ -2,7 +2,6 @@ package lethe
 
 import (
 	"errors"
-	"log"
 	"time"
 )
 
@@ -162,7 +161,6 @@ type Batch interface {
 func NewCollection(options CollectionOptions) (Collection, error) {
 
 	// init collection
-	log.Println("new collection")
 	c := newCollection(&options)
 
 	return c, nil

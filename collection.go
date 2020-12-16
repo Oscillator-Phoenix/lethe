@@ -2,6 +2,7 @@ package lethe
 
 import (
 	"context"
+	"log"
 	"sync"
 )
 
@@ -44,6 +45,8 @@ type collection struct {
 }
 
 func newCollection(options *CollectionOptions) *collection {
+	log.Println("new collection")
+
 	lsm := &collection{}
 
 	lsm.options = options
@@ -89,7 +92,8 @@ func (lsm *collection) Get(key []byte, readOptions *ReadOptions) ([]byte, error)
 		return value, nil
 	}
 
-	// lookup on persisted levels
+	// lookup on persisted levels with disk IO
+	// index i : less(newer) <===> greater(older)
 	for i := 0; i < len(lsm.levels); i++ {
 		if value := lsm.levels[i].get(key); value != nil {
 			return value, nil
@@ -112,22 +116,22 @@ func (lsm *collection) Put(key, value, dKey []byte, writeOptions *WriteOptions) 
 		return err
 	}
 
-	// if the capcity of memTable meet limit
-	if lsm.curMemTable.nBytes() > lsm.options.MemTableBytesLimit {
+	// // if the capcity of memTable meet limit
+	// if lsm.curMemTable.nBytes() > lsm.options.MemTableBytesLimit {
 
-		// create a new sstFile
+	// 	// create a new sstFile
 
-		// commit a perstist task
-		// lsm.persistTrigger <- persistTask{
-		// 	mt: lsm.curMemTable,
-		// }
+	// 	// commit a perstist task
+	// 	// lsm.persistTrigger <- persistTask{
+	// 	// 	mt: lsm.curMemTable,
+	// 	// }
 
-		file := lsm.levels[0].addSSTFile(lsm.curMemTable)
+	// 	file := lsm.levels[0].addSSTFile(lsm.curMemTable)
 
-		lsm.curMemTableMutex.Lock()
-		lsm.curMemTable = newMemTable(lsm.options.PrimaryKeyLess)
-		lsm.curMemTableMutex.Unlock()
-	}
+	// 	lsm.curMemTableMutex.Lock()
+	// 	lsm.curMemTable = newMemTable(lsm.options.PrimaryKeyLess)
+	// 	lsm.curMemTableMutex.Unlock()
+	// }
 
 	return nil
 }
@@ -140,7 +144,7 @@ func (lsm *collection) compactIfNecessary() {
 	// 			curLevel: lsm.levels[i],
 	// 			nextLevel:lsm.levels[i+1]
 	// 		}
-	// 	} 
+	// 	}
 	// }
 }
 
