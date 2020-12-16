@@ -17,7 +17,7 @@ type collection struct {
 	curMemTableMutex sync.Mutex
 
 	// persisted levels
-	levels []level
+	levels []*level
 
 	// persistence
 	// cancel func of persistence, init in Start() and then used in Close()
@@ -39,6 +39,11 @@ func newCollection(options *CollectionOptions) *collection {
 	lsm.options = options
 
 	lsm.curMemTable = newMemTable(lsm.options.PrimaryKeyLess)
+
+	lsm.levels = []*level{}
+	for i := 0; i < lsm.options.InitialLevelNum-1; i++ {
+		lsm.addNewLevel()
+	}
 
 	// persist
 	lsm.persistTrigger = make(chan persistTask, lsm.options.persistTriggerBufLen)
@@ -79,7 +84,7 @@ func (lsm *collection) Get(key []byte, readOptions *ReadOptions) ([]byte, error)
 	// lookup on persisted levels with disk IO
 	// index i : less(newer) <===> greater(older)
 	for i := 0; i < len(lsm.levels); i++ {
-		if value := lsm.levels[i].get(key); value != nil {
+		if value := lsm.getFromLevel(lsm.levels[i], key); value != nil {
 			return value, nil
 		}
 	}

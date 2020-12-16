@@ -2,7 +2,7 @@ package lethe
 
 import (
 	"bytes"
-	"context"
+	"log"
 	"math"
 	"sync"
 	"time"
@@ -14,97 +14,106 @@ import (
 // - entries within every page are sorted on primary key
 
 type level struct {
-	levelID int
+	// lock for level filed
+	mu sync.Mutex
 
-	primaryKeyLess func(s, t []byte) bool
-	deleteKeyLess  func(s, t []byte) bool
-
-	mu    sync.Mutex
 	files []*sstFile
 
-	// metadata
 	// ttl(time-to-live) is denoted by d_i in paper 4.1.2
 	ttl time.Duration
-
-	// compaction
-	compactFromPrevNotifier chan struct{}
-	compactTrigger          chan compactTask
-	levelTTLDaemonCancel    context.CancelFunc
 }
 
-func newLevel(levelID int, ttl time.Duration, compactTrigger chan compactTask) *level {
-	m := &level{}
-
-	m.levelID = levelID
-
-	m.ttl = ttl
-
-	m.compactTrigger = compactTrigger
-
-	// TODO
-
-	return m
+// newLevel returns a new level
+func newLevel() *level {
+	lv := &level{}
+	return lv
 }
 
-func (m *level) close() {
-	// TODO
-}
+// setTTL sets TTL for each level in LSM
+func (lsm *collection) setTTL() {
 
-func (m *level) get(key []byte) (value []byte) {
+	for i := 0; i < len(lsm.levels); i++ {
 
-	// TODO: data race `compactDaemon` goroutine change files of level
+		ttl := computeTTL(
+			lsm.options.DeletePersistThreshold,
+			i,
+			lsm.options.LevelSizeRatio,
+			len(lsm.levels))
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	pageGet := func(p *page) []byte {
-
-		// fence pointer check (i.e. primaryKeyMin <= key <= primaryKeyMax)
-		if m.primaryKeyLess(key, p.primaryKeyMin) || m.primaryKeyLess(p.primaryKeyMax, key) {
-			return nil
-		}
-
-		// page-granularity bloom filter existence check
-		if p.bloomFilterExists(key) == false {
-			return nil
-		}
-
-		// TODO
-		// load data form disk...
-		keys, values, _ := p.loadKVs()
-
-		// TODO
-		// binary search because entries within every page are sorted on primary key
-		for i := 0; i < len(keys); i++ {
-			if bytes.Equal(keys[i], key) {
-				return values[i]
-			}
-		}
-
-		return nil
+		lsm.levels[i].updateTTL(ttl)
 	}
+}
 
-	deleteTileGet := func(dt *deleteTile) []byte {
-		// fence pointer check (i.e. primaryKeyMin <= key <= primaryKeyMax)
-		if m.primaryKeyLess(key, dt.primaryKeyMin) || m.primaryKeyLess(dt.primaryKeyMax, key) {
-			return nil
-		}
+// addNewLevel adds a new level to the bottom of LSM with TTL resetting
+func (lsm *collection) addNewLevel() error {
 
-		// linear search because pages within a delete tile are sorted on delete key but not primary key
-		for i := 0; i < len(dt.pages); i++ {
-			if value := pageGet(dt.pages[i]); value != nil {
-				return value
-			}
-		}
+	// add a new level
+	lsm.levels = append(lsm.levels, newLevel())
+	log.Printf("add new level %d\n", len(lsm.levels))
 
-		return nil
-	}
+	// re-calculate TTL for each level
+	lsm.setTTL()
+
+	return nil
+}
+
+// getFromLevel gets value by key from a level
+func (lsm *collection) getFromLevel(lv *level, key []byte) (value []byte) {
+
+	// Warning: data race `compactDaemon` goroutine change files of level
+	lv.mu.Lock()
+	defer lv.mu.Unlock()
+
+	less := lsm.options.PrimaryKeyLess
 
 	sstFileGet := func(sf *sstFile) []byte {
-		// There are no repeated key in a sstFile.
+		// Note that there are no duplicate keys in sstfile, i.e. all keys in a sstFile are unique.
 
-		// fence pointer check (i.e. primaryKeyMin <= key <= primaryKeyMax)
-		if m.primaryKeyLess(key, sf.primaryKeyMin) || m.primaryKeyLess(sf.primaryKeyMax, key) {
+		// get from a page
+		pageGet := func(p *page) []byte {
+			// page fence pointer check (i.e. primaryKeyMin <= key <= primaryKeyMax)
+			if less(key, p.primaryKeyMin) || less(p.primaryKeyMax, key) {
+				return nil
+			}
+
+			// page-granularity bloom filter existence check
+			if p.bloomFilterExists(key) == false {
+				return nil
+			}
+
+			// load data form disk...
+			keys, values, _ := p.loadKVs(sf.fd)
+
+			// TODO
+			// binary search because entries within every page are sorted on primary key
+			for i := 0; i < len(keys); i++ {
+				if bytes.Equal(keys[i], key) {
+					return values[i]
+				}
+			}
+
+			return nil
+		}
+
+		// get from a delet tile
+		deleteTileGet := func(dt *deleteTile) []byte {
+			// delet tile fence pointer check (i.e. primaryKeyMin <= key <= primaryKeyMax)
+			if less(key, dt.primaryKeyMin) || less(dt.primaryKeyMax, key) {
+				return nil
+			}
+
+			// linear search because pages within a delete tile are sorted on delete key but not primary key
+			for i := 0; i < len(dt.pages); i++ {
+				if value := pageGet(dt.pages[i]); value != nil {
+					return value
+				}
+			}
+
+			return nil
+		}
+
+		// sstFile fence pointer check (i.e. primaryKeyMin <= key <= primaryKeyMax)
+		if less(key, sf.primaryKeyMin) || less(sf.primaryKeyMax, key) {
 			return nil
 		}
 
@@ -119,10 +128,11 @@ func (m *level) get(key []byte) (value []byte) {
 		return nil
 	}
 
+	// levelGet
 	// index i : greater(newer file) ==> less(older file)
 	// if key is not found in newer file, search in older file.
-	for i := len(m.files); i >= 0; i-- {
-		if value := sstFileGet(m.files[i]); value != nil {
+	for i := len(lv.files); i >= 0; i-- {
+		if value := sstFileGet(lv.files[i]); value != nil {
 			return value
 		}
 	}
@@ -155,9 +165,4 @@ func (m *level) updateTTL(ttl time.Duration) {
 
 	// update TTL of this level
 	m.ttl = ttl
-
-	// update TTL for each file in this level
-	for i := len(m.files); i >= 0; i-- {
-		m.files[i].updateTTL(m.ttl)
-	}
 }

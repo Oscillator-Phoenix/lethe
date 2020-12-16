@@ -48,6 +48,10 @@ type CollectionOptions struct {
 	// DeletePersistThreshold is denoted by D_th in paper 4.1 .
 	DeletePersistThreshold time.Duration
 
+	// InitialLevelNum is the initial number of level.
+	// A LSM with L levels has one memTable(`Level 0`) and L-1 perist levels(`Level 1` to `Level L-1` ).
+	InitialLevelNum int
+
 	// ----------------------------------------------------------------------------
 
 	// Unexposed data filed
@@ -66,11 +70,12 @@ var DefaultCollectionOptions = CollectionOptions{
 	DirPath:                "",                                                      //
 	CreateDirIfMissing:     false,                                                   //
 	DeletePersistThreshold: 24 * time.Hour,                                          // one day
+	InitialLevelNum:        10,                                                      //
 
 	// -------------------------------------------
 
-	persistTriggerBufLen: 5,
-	compactTriggerBufLen: 5,
+	persistTriggerBufLen: 5, //
+	compactTriggerBufLen: 5, //
 }
 
 // CollectionStats shows a status of collection.

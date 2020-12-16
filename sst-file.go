@@ -1,44 +1,19 @@
 package lethe
 
-import (
-	"sync"
-	"time"
-)
-
 type sstFile struct {
-	fileID int
+	// file reader
+	fd sstFileReader
 
-	mu    sync.Mutex
+	// delete tiles
 	tiles []*deleteTile
 
-	ttl time.Duration
-
-	// metadata
+	// fence pointer
 	primaryKeyMin []byte
 	primaryKeyMax []byte
 	deleteKeyMin  []byte
 	deleteKeyMax  []byte
 
+	// metadata
 	aMAX float64
 	b    int
-}
-
-func newSSTFile(fileID int, ttl time.Duration) *sstFile {
-	m := &sstFile{}
-
-	m.fileID = fileID
-	m.ttl = ttl
-
-	return m
-}
-
-func (m *sstFile) close() {
-}
-
-func (m *sstFile) updateTTL(ttl time.Duration) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	// update TTL of this file
-	m.ttl = ttl
 }

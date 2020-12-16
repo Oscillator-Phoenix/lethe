@@ -38,15 +38,16 @@ todo
 
 ### 2.2 TODO Task
 
-1. change `sync.Mutex` to `sync.RWMutex` if possible. (Easy, Performance)
-2. support write option: sync write. (Easy, Usability)
-3. add parallel compaction. (Hard, Performance)
-4. Write Ahead Log: atomic, recovery. (Hard, Performance, Usability)
-5. add read-only `snapshot`: MVCC. (Hard, Performance, Usability)
-6. add actomic wirte `batch`: **Depend on 4**. (Medium, Usability)
-7. support config file, using [toml](https://pkg.go.dev/github.com/BurntSushi/toml) format. (Medium, Usability)
-8. support cli of lethe. (Medium, Usability)
-9. use `sync.Pool` in [memTable](./memtable.go) to reduce the times of memory allocation (Medium, Performance)
+1. encode in-memory LSM data structre to disk and rebuild in-memory LSM data structure form disk (Medium, Usability)
+2. change `sync.Mutex` to `sync.RWMutex` if possible. (Easy, Performance)
+3. support write option: sync write. (Easy, Usability)
+4. add parallel compaction. (Hard, Performance)
+5. Write Ahead Log: atomic, recovery. (Hard, Performance, Usability)
+6. add read-only `snapshot`: MVCC. (Hard, Performance, Usability)
+7. add actomic wirte `batch`: **Depend on 4**. (Medium, Usability)
+8. support config file, using [toml](https://pkg.go.dev/github.com/BurntSushi/toml) format. (Medium, Usability)
+9. support cli of lethe. (Medium, Usability)
+10. use `sync.Pool` in [memTable](./memtable.go) to reduce the times of memory allocation (Medium, Performance)
 
 ---
 

@@ -11,12 +11,10 @@ type persistTask struct {
 
 func (lsm *collection) persistDaemon(ctx context.Context) {
 	for {
-		var task persistTask
-
 		select {
-		case task = <-lsm.persistTrigger:
+		case task := <-lsm.persistTrigger:
 			{
-
+				lsm.doPersist(task)
 			}
 		case <-ctx.Done():
 			{
@@ -24,12 +22,9 @@ func (lsm *collection) persistDaemon(ctx context.Context) {
 				return
 			}
 		}
-
-		doPersist(ctx, task)
-
 	}
 }
 
-func doPersist(ctx context.Context, task persistTask) {
+func (lsm *collection) doPersist(task persistTask) {
 
 }
