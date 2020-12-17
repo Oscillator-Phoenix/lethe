@@ -8,16 +8,22 @@ import (
 
 // A collection implements the Collection interface.
 type collection struct {
+
+	// protect data field of collection
+	sync.Mutex
+
 	// config
 	options *CollectionOptions
-	stats   *CollectionStats
+
+	// status
+	stats *CollectionStats
 
 	// in-memory table
-	curMemTable      *memTable
+	curMemTable      *memTable // `Level 0`
 	curMemTableMutex sync.Mutex
 
 	// persisted levels
-	levels []*level
+	levels []*level // `Level 1` ~ `Level L-1`
 
 	// persistence
 	// cancel func of persistence, init in Start() and then used in Close()
@@ -36,10 +42,13 @@ func newCollection(options *CollectionOptions) *collection {
 
 	lsm := &collection{}
 
+	// set config
 	lsm.options = options
 
+	// create in-memory table, i.e. `Level 0`
 	lsm.curMemTable = newMemTable(lsm.options.PrimaryKeyLess)
 
+	// create L-1 persist levels, i.e. `Level 1` ~ `Level L-1`
 	lsm.levels = []*level{}
 	for i := 0; i < lsm.options.InitialLevelNum-1; i++ {
 		lsm.addNewLevel()
@@ -96,9 +105,9 @@ func (lsm *collection) Get(key []byte, readOptions *ReadOptions) ([]byte, error)
 func (lsm *collection) Put(key, value, dKey []byte, writeOptions *WriteOptions) error {
 
 	// add lock to prevent from Put while changing curMemTable
-	lsm.curMemTableMutex.Lock()
+	lsm.Lock()
 	mt := lsm.curMemTable
-	lsm.curMemTableMutex.Unlock()
+	lsm.Lock()
 
 	// put KV into memTable
 	if err := mt.Put(key, value); err != nil {

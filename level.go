@@ -23,9 +23,10 @@ type level struct {
 	ttl time.Duration
 }
 
-// newLevel returns a new level
+// newLevel returns a new level holding no sstFile
 func newLevel() *level {
 	lv := &level{}
+	lv.files = []*sstFile{}
 	return lv
 }
 
@@ -35,32 +36,101 @@ func (lsm *collection) setTTL() {
 	for i := 0; i < len(lsm.levels); i++ {
 
 		ttl := computeTTL(
-			lsm.options.DeletePersistThreshold,
-			i,
-			lsm.options.LevelSizeRatio,
-			len(lsm.levels))
+			lsm.options.DeletePersistThreshold, // D_th
+			i+1,                                // levelID = i + 1
+			lsm.options.LevelSizeRatio,         // T
+			1+len(lsm.levels))                  // L = `Level 0` + `L-1 persisted levels`
 
-		lsm.levels[i].updateTTL(ttl)
+		// update TTL of this level
+		lsm.levels[i].mu.Lock()
+		lsm.levels[i].ttl = ttl
+		lsm.levels[i].mu.Unlock()
 	}
 }
 
 // addNewLevel adds a new level to the bottom of LSM with TTL resetting
 func (lsm *collection) addNewLevel() error {
+	// LSM lock
+	lsm.Lock()
+	defer lsm.Unlock()
+
+	lv := newLevel()
 
 	// add a new level
-	lsm.levels = append(lsm.levels, newLevel())
-	log.Printf("add new level %d\n", len(lsm.levels))
+	lsm.levels = append(lsm.levels, lv)
 
 	// re-calculate TTL for each level
 	lsm.setTTL()
 
+	log.Printf("add new level %d\n and reset TTL of levels", len(lsm.levels))
+
 	return nil
+}
+
+// replaceSSTFileOnLevel replace toRemove files with toInset file on the level
+func (lsm *collection) replaceSSTFileOnLevel(lv *level, toRemove []*sstFile, toInsert *sstFile) error {
+	// Level Lock
+	lv.mu.Lock()
+	defer lv.mu.Unlock()
+
+	if toRemove == nil {
+		// do nothing
+	} else {
+		newFiles := []*sstFile{}
+
+		inToRemove := func(file *sstFile) bool {
+			for i := 0; i < len(toRemove); i++ {
+				if file == toRemove[i] {
+					return true
+				}
+			}
+			return false
+		}
+
+		// remove files
+		for i := 0; i < len(lv.files); i++ {
+			if inToRemove(lv.files[i]) == false {
+				newFiles = append(newFiles, lv.files[i])
+			}
+		}
+		lv.files = newFiles
+	}
+
+	// add the newest file to the back of level.files
+	lv.files = append(lv.files, toInsert)
+
+	return nil
+}
+
+// findOverlapFiles finds the files overlap with target on the level
+func (lsm *collection) findOverlapFiles(lv *level, target *sstFile) ([]*sstFile, bool) {
+	// Level Lock
+	lv.mu.Lock()
+	defer lv.mu.Unlock()
+
+	founds := []*sstFile{}
+
+	less := lsm.options.PrimaryKeyLess
+	isOverlap := func(a, b *sstFile) bool {
+		return !(less(a.primaryKeyMax, b.primaryKeyMin) || less(b.primaryKeyMax, a.primaryKeyMin))
+	}
+
+	for i := 0; i < len(lv.files); i++ {
+		if isOverlap(target, lv.files[i]) {
+			founds = append(founds, lv.files[i])
+		}
+	}
+
+	if (len(founds)) == 0 {
+		return nil, false
+	}
+
+	return founds, true
 }
 
 // getFromLevel gets value by key from a level
 func (lsm *collection) getFromLevel(lv *level, key []byte) (value []byte) {
-
-	// Warning: data race `compactDaemon` goroutine change files of level
+	// Level lock
 	lv.mu.Lock()
 	defer lv.mu.Unlock()
 
@@ -131,7 +201,7 @@ func (lsm *collection) getFromLevel(lv *level, key []byte) (value []byte) {
 	// levelGet
 	// index i : greater(newer file) ==> less(older file)
 	// if key is not found in newer file, search in older file.
-	for i := len(lv.files); i >= 0; i-- {
+	for i := len(lv.files) - 1; i >= 0; i-- {
 		if value := sstFileGet(lv.files[i]); value != nil {
 			return value
 		}
@@ -156,13 +226,4 @@ func computeTTL(deletePersistThreshold time.Duration, levelID int, levelSizeRati
 	di := d0 * math.Pow(T, i)
 
 	return time.Duration(int(di))
-}
-
-// updateTTL when a new level is added to LSM
-func (m *level) updateTTL(ttl time.Duration) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	// update TTL of this level
-	m.ttl = ttl
 }
