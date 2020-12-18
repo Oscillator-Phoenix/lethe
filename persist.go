@@ -18,7 +18,7 @@ func (lsm *collection) persistDaemon(ctx context.Context) {
 			}
 		case <-ctx.Done():
 			{
-				log.Println("stop compaction daemon")
+				log.Println("stop persist daemon")
 				return
 			}
 		}

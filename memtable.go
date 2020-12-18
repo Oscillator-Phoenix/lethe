@@ -10,7 +10,7 @@ type sortedMemMap interface {
 	Size() int
 	Empty() bool
 	Get(key []byte) (value []byte, ok bool)
-	Put(key, value []byte) error
+	Put(key, value, dKey []byte) error
 	Del(key []byte) error
 	Traverse(operate func(key, value []byte))
 }
@@ -64,13 +64,13 @@ func (mt *memTable) Get(key []byte) (value []byte, ok bool) {
 }
 
 // Put inserts a kv entry into memTable.
-func (mt *memTable) Put(key, value []byte) error {
+func (mt *memTable) Put(key, value, dKey []byte) error {
 	mt.mu.Lock()
 	defer mt.mu.Unlock()
 
-	mt._nBytes += (len(key) + len(value))
+	mt._nBytes += (len(key) + len(value) + len(dKey))
 
-	return mt.smm.Put(key, value)
+	return mt.smm.Put(key, value, dKey)
 }
 
 // Del the kv entry by key

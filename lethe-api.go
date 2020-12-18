@@ -73,7 +73,7 @@ var DefaultCollectionOptions = CollectionOptions{
 	DirPath:                "",                                                      //
 	CreateDirIfMissing:     false,                                                   //
 	DeletePersistThreshold: 24 * time.Hour,                                          // one day
-	InitialLevelNum:        10,                                                      //
+	InitialLevelNum:        6,                                                       //
 
 	// -------------------------------------------
 

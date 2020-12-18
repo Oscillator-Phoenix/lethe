@@ -21,11 +21,13 @@ func TestBasic1(t *testing.T) {
 	batchSize := 1000 * 100
 	fmt.Println("genBatchKVA...")
 	ks, vs, as := genBatchKVA(batchSize)
+	fmt.Println("genBatchKVA done")
 
 	ropts := &lethe.ReadOptions{}
 	wopts := &lethe.WriteOptions{}
 
 	// Get before Put
+	fmt.Println("Get before Put ...")
 	for i := 0; i < batchSize; i++ {
 		v, err := c.Get(ks[i], ropts)
 		if v != nil {
@@ -35,16 +37,20 @@ func TestBasic1(t *testing.T) {
 			t.Fatal("Get\n")
 		}
 	}
+	fmt.Println("Get before Put done")
 
 	// Put
+	fmt.Println("Put ...")
 	for i := 0; i < batchSize; i++ {
-		if err = c.Put(ks[i], vs[i], nil, wopts); err != nil {
+		if err = c.Put(ks[i], vs[i], []byte{}, wopts); err != nil {
 			t.Fatal("Put\n")
 		}
 		// t.Logf("Put [%s] [%s]\n", string(ks[i]), string(vs[i]))
 	}
+	fmt.Println("Put done")
 
 	// Get After Put
+	fmt.Println("Get After Put ...")
 	for i := 0; i < batchSize; i++ {
 		v, err := c.Get(ks[i], ropts)
 		if err != nil {
@@ -58,19 +64,23 @@ func TestBasic1(t *testing.T) {
 			t.Logf("expected %v\n", as[i])
 			t.Fatalf("[%d/%d] key[%s] got[%s], expected[%s].\n", i, len(ks), string(ks[i]), string(v), string(as[i]))
 		}
-		if (i+1)%(batchSize/20) == 0 {
+		if (i+1)%(batchSize/10) == 0 {
 			fmt.Printf("tests %d / %d passed\n", i+1, batchSize)
 		}
 	}
+	fmt.Println("Get After Put done")
 
 	// Del
+	fmt.Println("Del ...")
 	for i := 0; i < batchSize; i++ {
 		if err := c.Del(ks[i], wopts); err != nil {
 			t.Fatalf("Del: %v\n", err)
 		}
 	}
+	fmt.Println("Del done")
 
 	// Get After Del
+	fmt.Println("Get After Del ...")
 	for i := 0; i < batchSize; i++ {
 		v, err := c.Get(ks[i], ropts)
 		if v != nil {
@@ -81,4 +91,6 @@ func TestBasic1(t *testing.T) {
 			t.Fatalf("Get: expected %v\n", lethe.ErrKeyNotFound)
 		}
 	}
+	fmt.Println("Get After Del done")
+
 }

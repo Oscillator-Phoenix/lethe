@@ -50,9 +50,11 @@ func newCollection(options *CollectionOptions) *collection {
 
 	// set config
 	lsm.options = options
+	log.Print(lsm.options)
 
 	// create in-memory table, i.e. `Level 0`
 	lsm.curMemTable = newMemTable(lsm.options.PrimaryKeyLess)
+	log.Println("add new level 0 which is an in-memory table")
 
 	// create L-1 persist levels, i.e. `Level 1` ~ `Level L-1`
 	lsm.levels = []*level{}
@@ -99,13 +101,13 @@ func (lsm *collection) Get(key []byte, readOptions *ReadOptions) ([]byte, error)
 		return value, nil
 	}
 
-	// lookup on persisted levels with disk IO
-	// index i : less(newer) <===> greater(older)
-	for i := 0; i < len(lsm.levels); i++ {
-		if value := lsm.getFromLevel(lsm.levels[i], key); value != nil {
-			return value, nil
-		}
-	}
+	// // lookup on persisted levels with disk IO
+	// // index i : less(newer) <===> greater(older)
+	// for i := 0; i < len(lsm.levels); i++ {
+	// 	if value := lsm.getFromLevel(lsm.levels[i], key); value != nil {
+	// 		return value, nil
+	// 	}
+	// }
 
 	return nil, ErrKeyNotFound
 }
@@ -122,19 +124,15 @@ func (lsm *collection) Put(key, value, dKey []byte, writeOptions *WriteOptions) 
 		return ErrValueTooLarge
 	}
 
-	// add lock to prevent from Put while changing curMemTable
-	lsm.Lock()
-	mt := lsm.curMemTable
-	lsm.Lock()
+	// TODO: add lock to prevent from Put while changing curMemTable
 
 	// put KV into memTable
-	if err := mt.Put(key, value); err != nil {
+	if err := lsm.curMemTable.Put(key, value, dKey); err != nil {
 		return err
 	}
 
 	// TODO
-
-	// // if the capcity of memTable meet limit
+	// // if the capcity of memTable meets limit, then trigger a persist
 	// if lsm.curMemTable.nBytes() > lsm.options.MemTableBytesLimit {
 
 	// 	// create a new sstFile

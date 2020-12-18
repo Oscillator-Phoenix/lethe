@@ -62,7 +62,7 @@ func (lsm *collection) addNewLevel() error {
 	// re-calculate TTL for each level
 	lsm.setTTL()
 
-	log.Printf("add new level %d\n and reset TTL of levels", len(lsm.levels))
+	log.Printf("add new level %d (persist) and reset TTL of levels", len(lsm.levels))
 
 	return nil
 }

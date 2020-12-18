@@ -22,6 +22,7 @@ type LessFunc func(s, t []byte) bool
 type keyValue struct {
 	key   []byte
 	value []byte
+	dKey  []byte
 }
 
 type skipListNode struct {
@@ -54,10 +55,11 @@ func copyBytes(src []byte) []byte {
 }
 
 // newSkipListNode return a skipListNode via copying data
-func newSkipListNode(key, value []byte, level int) *skipListNode {
+func newSkipListNode(key, value, dKey []byte, level int) *skipListNode {
 	var node skipListNode
 	node.key = copyBytes(key)
 	node.value = copyBytes(value)
+	node.dKey = copyBytes(dKey)
 	node.forwards = make([](*skipListNode), level)
 	return &node
 }
@@ -72,7 +74,7 @@ func NewSkipList(less func(s, t []byte) bool) *SkipList {
 
 	sl.probability = defaultProbability
 	sl.maxLevel = defaultMaxLevel
-	sl.head = newSkipListNode(nil, nil, sl.maxLevel) // initialize head-node with maxLevel
+	sl.head = newSkipListNode(nil, nil, nil, sl.maxLevel) // initialize head-node with maxLevel
 
 	rand.Seed(time.Now().Unix()) // optional: reset random number seed
 
@@ -89,7 +91,7 @@ func NewSkipListWith(less func(s, t []byte) bool, probability float32, maxLevel 
 
 	sl.probability = probability
 	sl.maxLevel = maxLevel
-	sl.head = newSkipListNode(nil, nil, sl.maxLevel) // initialize head-node with maxLevel
+	sl.head = newSkipListNode(nil, nil, nil, sl.maxLevel) // initialize head-node with maxLevel
 
 	rand.Seed(time.Now().Unix()) // optional: reset random number seed
 
@@ -132,7 +134,7 @@ func (sl *SkipList) Get(key []byte) (value []byte, ok bool) {
 }
 
 // Put inserts a kv entry into skiplist.
-func (sl *SkipList) Put(key, value []byte) error {
+func (sl *SkipList) Put(key, value, dKey []byte) error {
 	// fmt.Println("head", sl.head)
 	// fmt.Printf("to insert: (%d, %d)\n", key, value)
 
@@ -150,14 +152,15 @@ func (sl *SkipList) Put(key, value []byte) error {
 
 	// replace existing old value with the new value, then return
 	if x != nil && sl.equal(x.key, key) {
-		x.value = copyBytes(value)
-		return nil // insert succeeded
+		x.value = copyBytes(value) // overwrite
+		x.dKey = copyBytes(dKey)   // overwrite
+		return nil                 // insert succeeded
 	}
 
 	newNodeLevel := sl.randomLevel() // function `randomLevel` make sure `newNodeLevel < sl.maxLevel`
 	// fmt.Println("newNodeLevel", newNodeLevel)
 
-	newNode := newSkipListNode(key, value, newNodeLevel)
+	newNode := newSkipListNode(key, value, dKey, newNodeLevel)
 	for i := 0; i < newNodeLevel; i++ {
 		newNode.forwards[i] = update[i].forwards[i]
 		update[i].forwards[i] = newNode

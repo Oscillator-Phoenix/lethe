@@ -53,7 +53,7 @@ func simpleExamplePut(sl *SkipList) {
 	for i := 0; i < len(xs); i++ {
 		k := intToBytes(xs[i])
 		v := intToBytes(xs[i])
-		if err := sl.Put(k, v); err != nil {
+		if err := sl.Put(k, v, nil); err != nil {
 			panic("Put fialed")
 		}
 	}
@@ -72,7 +72,7 @@ func TestPut1(t *testing.T) {
 	for i := 0; i < len(xs); i++ {
 		k := intToBytes(xs[i])
 		v := intToBytes(xs[i])
-		if err := sl.Put(k, v); err != nil {
+		if err := sl.Put(k, v, nil); err != nil {
 			t.Logf("faild at insert element xs[%d]=%s", i, string(k))
 			t.Log("xs", xs)
 			t.Fail()
@@ -98,7 +98,7 @@ func TestInsert2(t *testing.T) {
 		for i := 0; i < len(xs); i++ {
 			k := intToBytes(xs[i])
 			v := intToBytes(xs[i])
-			if err := sl.Put(k, v); err != nil {
+			if err := sl.Put(k, v, nil); err != nil {
 				t.Logf("faild at insert element xs[%d]=%d", i, xs[i])
 				t.Fail()
 			}
