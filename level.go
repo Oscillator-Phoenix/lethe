@@ -67,8 +67,8 @@ func (lsm *collection) addNewLevel() error {
 	return nil
 }
 
-// replaceSSTFileOnLevel replace toRemove files with toInset file on the level
-func (lsm *collection) replaceSSTFileOnLevel(lv *level, toRemove []*sstFile, toInsert *sstFile) error {
+// replaceSSTFileOnLevel replace toRemove files with toInset files on the level
+func (lsm *collection) replaceFilesOnLevel(lv *level, toRemove []*sstFile, toInsert []*sstFile) error {
 	// Level Lock
 	lv.mu.Lock()
 	defer lv.mu.Unlock()
@@ -89,7 +89,7 @@ func (lsm *collection) replaceSSTFileOnLevel(lv *level, toRemove []*sstFile, toI
 
 		// remove files
 		for i := 0; i < len(lv.files); i++ {
-			if inToRemove(lv.files[i]) == false {
+			if !inToRemove(lv.files[i]) {
 				newFiles = append(newFiles, lv.files[i])
 			}
 		}
@@ -97,13 +97,14 @@ func (lsm *collection) replaceSSTFileOnLevel(lv *level, toRemove []*sstFile, toI
 	}
 
 	// add the newest file to the back of level.files
-	lv.files = append(lv.files, toInsert)
+	lv.files = append(lv.files, toInsert...)
 
 	return nil
 }
 
-// findOverlapFiles finds the files overlap with target on the level
-func (lsm *collection) findOverlapFiles(lv *level, target *sstFile) ([]*sstFile, bool) {
+// findOverlapFiles returns unsorted the files overlapping with target file.
+// If there is no file overlapping with target file, then returns nil.
+func (lsm *collection) findOverlapFiles(lv *level, target *sstFile) []*sstFile {
 	// Level Lock
 	lv.mu.Lock()
 	defer lv.mu.Unlock()
@@ -111,21 +112,21 @@ func (lsm *collection) findOverlapFiles(lv *level, target *sstFile) ([]*sstFile,
 	founds := []*sstFile{}
 
 	less := lsm.options.PrimaryKeyLess
-	isOverlap := func(a, b *sstFile) bool {
-		return !(less(a.primaryKeyMax, b.primaryKeyMin) || less(b.primaryKeyMax, a.primaryKeyMin))
+	isOverlap := func(f *sstFile) bool {
+		return !(less(target.primaryKeyMax, f.primaryKeyMin) || less(f.primaryKeyMax, target.primaryKeyMin))
 	}
 
 	for i := 0; i < len(lv.files); i++ {
-		if isOverlap(target, lv.files[i]) {
+		if isOverlap(lv.files[i]) {
 			founds = append(founds, lv.files[i])
 		}
 	}
 
-	if (len(founds)) == 0 {
-		return nil, false
+	if len(founds) == 0 {
+		return nil
 	}
 
-	return founds, true
+	return founds
 }
 
 // getFromLevel gets value by key from a level

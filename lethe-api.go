@@ -9,8 +9,11 @@ var (
 	// ErrKeyNotFound is returned when the key is not found.
 	ErrKeyNotFound = errors.New("key-not-found")
 
-	// ErrKeyTooLarge is returned when the length of the key exceeds the limit of ???.
-	ErrKeyTooLarge = errors.New("key-too-large")
+	// ErrPrimaryKeyTooLarge is returned when the length of the primary key exceeds the limit.
+	ErrPrimaryKeyTooLarge = errors.New("primary-key-too-large")
+
+	// ErrDeleteKeyTooLarge is returned when the length of the delete key exceeds the limit.
+	ErrDeleteKeyTooLarge = errors.New("delete-key-too-large")
 
 	// ErrValueTooLarge is returned when the length of the value exceeds the limit of ???.
 	ErrValueTooLarge = errors.New("value-too-large")

@@ -6,6 +6,12 @@ import (
 	"sync"
 )
 
+const (
+	constMaxPrimaryKeyBytesLen int = (1 << 20) - 1
+	constMaxDeleteKeyBytesLen  int = (1 << 20) - 1
+	constMaxValueBytesLen      int = (1 << 32) - 1
+)
+
 // A collection implements the Collection interface.
 type collection struct {
 
@@ -84,6 +90,9 @@ func (lsm *collection) Close() error {
 // Get retrieves a value by iterating over all the segments within
 // the collection, if the key is not found a nil val is returned.
 func (lsm *collection) Get(key []byte, readOptions *ReadOptions) ([]byte, error) {
+	if len(key) > constMaxPrimaryKeyBytesLen {
+		return nil, ErrPrimaryKeyTooLarge
+	}
 
 	// lookup on memory table
 	if value, isPresent := lsm.curMemTable.Get(key); isPresent {
@@ -103,6 +112,15 @@ func (lsm *collection) Get(key []byte, readOptions *ReadOptions) ([]byte, error)
 
 // Put creates or updates an key-val entry in the Collection.
 func (lsm *collection) Put(key, value, dKey []byte, writeOptions *WriteOptions) error {
+	if len(key) > constMaxPrimaryKeyBytesLen {
+		return ErrPrimaryKeyTooLarge
+	}
+	if len(dKey) > constMaxDeleteKeyBytesLen {
+		return ErrPrimaryKeyTooLarge
+	}
+	if len(value) > constMaxValueBytesLen {
+		return ErrValueTooLarge
+	}
 
 	// add lock to prevent from Put while changing curMemTable
 	lsm.Lock()
