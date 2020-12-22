@@ -15,8 +15,8 @@ func TestBasicUsage(t *testing.T) {
 
 	// wtire
 	wopts := &lethe.WriteOptions{}
-	c.Put([]byte("car-0"), []byte("tesla"), wopts)
-	c.Put([]byte("car-1"), []byte("honda"), wopts)
+	c.Put([]byte("car-0"), []byte("tesla"), nil, wopts)
+	c.Put([]byte("car-1"), []byte("honda"), nil, wopts)
 
 	// read
 	ropts := &lethe.ReadOptions{}
