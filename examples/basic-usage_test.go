@@ -24,5 +24,8 @@ func TestBasicUsage(t *testing.T) {
 	valX, err := c.Get([]byte("car-not-there"), ropts) // valX == nil.
 	val1, err := c.Get([]byte("car-1"), ropts)         // val1 == []byte("honda").
 
-	fmt.Println(string(val0), string(valX), string(val1))
+	fmt.Println(string(val0) == "tesla", string(valX) == "", string(val1) == "honda")
+	if !(string(val0) == "tesla" && string(valX) == "" && string(val1) == "honda") {
+		t.Fail()
+	}
 }

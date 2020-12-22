@@ -86,6 +86,8 @@ func (lsm *collection) Close() error {
 	// stop lsm.compactDaemon()
 	lsm.compactCancel()
 
+	log.Println("close")
+
 	return nil
 }
 
