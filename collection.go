@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"sync"
+	"sync/atomic"
 )
 
 const (
@@ -23,6 +24,9 @@ type collection struct {
 
 	// status
 	stats *CollectionStats
+
+	// increater sequentce number of operation on collection
+	seqNumInc uint64
 
 	// in-memory table
 	curMemTable      *memTable // `Level 0`
@@ -79,6 +83,7 @@ func newCollection(options *CollectionOptions) *collection {
 
 // Close synchronously stops background goroutines.
 func (lsm *collection) Close() error {
+	log.Println("collection is closing ...")
 
 	// stop lsm.persistDaemon()
 	lsm.persistCancel()
@@ -86,28 +91,42 @@ func (lsm *collection) Close() error {
 	// stop lsm.compactDaemon()
 	lsm.compactCancel()
 
-	log.Println("close")
+	log.Println("collection is closed")
 
 	return nil
+}
+
+// getSeqNum atomically increates `lsm.seqNumInc` and returns the new value
+func (lsm *collection) getSeqNum() uint64 {
+	return atomic.AddUint64(&lsm.seqNumInc, 1)
 }
 
 // Get retrieves a value by iterating over all the segments within
 // the collection, if the key is not found a nil val is returned.
 func (lsm *collection) Get(key []byte, readOptions *ReadOptions) ([]byte, error) {
+
 	if len(key) > constMaxPrimaryKeyBytesLen {
 		return nil, ErrPrimaryKeyTooLarge
 	}
 
 	// lookup on memory table
-	if value, isPresent := lsm.curMemTable.Get(key); isPresent {
+	if value, found := lsm.curMemTable.Get(key); found {
 		return value, nil
 	}
 
-	// // lookup on persisted levels with disk IO
-	// // index i : less(newer) <===> greater(older)
+	// lookup on persisted levels with disk IO
+	// index i : less(newer) <===> greater(older)
 	// for i := 0; i < len(lsm.levels); i++ {
-	// 	if value := lsm.getFromLevel(lsm.levels[i], key); value != nil {
-	// 		return value, nil
+
+	// 	value, err := lsm.getFromLevel(lsm.levels[i], key)
+
+	// 	if err != nil {
+	// 		log.Printf("[internal error] %v\n", err)
+	// 		return nil, ErrPlaceholder
+	// 	}
+
+	// 	if value != nil {
+	// 		break
 	// 	}
 	// }
 
@@ -115,21 +134,26 @@ func (lsm *collection) Get(key []byte, readOptions *ReadOptions) ([]byte, error)
 }
 
 // Put creates or updates an key-val entry in the Collection.
-func (lsm *collection) Put(key, value, dKey []byte, writeOptions *WriteOptions) error {
+func (lsm *collection) Put(key, value, deleteKey []byte, writeOptions *WriteOptions) error {
+
 	if len(key) > constMaxPrimaryKeyBytesLen {
 		return ErrPrimaryKeyTooLarge
 	}
-	if len(dKey) > constMaxDeleteKeyBytesLen {
-		return ErrPrimaryKeyTooLarge
+	if len(deleteKey) > constMaxDeleteKeyBytesLen {
+		return ErrDeleteKeyTooLarge
 	}
 	if len(value) > constMaxValueBytesLen {
 		return ErrValueTooLarge
 	}
 
 	// TODO: add lock to prevent from Put while changing curMemTable
+	meta := keyMeta{
+		seqNum: lsm.getSeqNum(),
+		opType: constOpPut, // Put
+	}
 
 	// put KV into memTable
-	if err := lsm.curMemTable.Put(key, value, dKey); err != nil {
+	if err := lsm.curMemTable.Put(key, value, deleteKey, meta); err != nil {
 		return err
 	}
 
@@ -169,8 +193,18 @@ func (lsm *collection) compactIfNecessary() {
 // Del deletes a key-val entry from the Collection.
 func (lsm *collection) Del(key []byte, writeOptions *WriteOptions) error {
 
-	// TODO
-	if err := lsm.curMemTable.Del(key); err != nil {
+	if len(key) > constMaxPrimaryKeyBytesLen {
+		return ErrPrimaryKeyTooLarge
+	}
+
+	// TODO: add lock to prevent from Put while changing curMemTable
+	meta := keyMeta{
+		seqNum: lsm.getSeqNum(),
+		opType: constOpDel, // Del, tombstone
+	}
+
+	// put tombstone into memTable
+	if err := lsm.curMemTable.Put(key, nil, nil, meta); err != nil {
 		return err
 	}
 

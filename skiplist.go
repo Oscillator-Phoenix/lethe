@@ -1,4 +1,4 @@
-package skiplist
+package lethe
 
 import (
 	"bytes"
@@ -9,89 +9,70 @@ import (
 )
 
 // skipList is an ordered key-value map which was proposed by the paper below:
-// https://www.epaperpress.com/sortsearch/download/skiplist.pdf
+// https://www.epaperpress.com/sortsearch/download/skipList.pdf
 
 const (
-	defaultMaxLevel    int     = 32
-	defaultProbability float32 = 0.25
+	defaultSkipListMaxLevel    int     = 32
+	defaultSkipListProbability float32 = 0.25
 )
 
-// LessFunc returns whether key s is less than key t.
-type LessFunc func(s, t []byte) bool
-
-type keyValue struct {
-	key   []byte
-	value []byte
-	dKey  []byte
-}
-
 type skipListNode struct {
-	keyValue
+	key      []byte
+	entity   *sortedMapEntity
 	forwards [](*skipListNode) // length of `forwards` is the level of this node
 }
 
-// SkipList is a sorted Key-Value map.
-// SkipList implements the sortedMemMap interface.
-type SkipList struct {
+// skipList is a sorted Key-Value map.
+// skipList implements the sortedMap interface.
+type skipList struct {
 	head *skipListNode
 
-	// the number of kv entries in the skiplist
+	// the number of kv entries in the skipList
 	_size int
 
 	// configuration
-	less        LessFunc
-	equal       LessFunc
+	less        func(s, t []byte) bool // less returns whether key s is less than key t.
 	maxLevel    int
 	probability float32
 }
 
-func copyBytes(src []byte) []byte {
-	if src == nil {
-		return nil
-	}
-	dst := make([]byte, len(src))
-	copy(dst, src)
-	return dst
-}
-
 // newSkipListNode return a skipListNode via copying data
-func newSkipListNode(key, value, dKey []byte, level int) *skipListNode {
+func newSkipListNode(key []byte, entity *sortedMapEntity, level int) *skipListNode {
 	var node skipListNode
 	node.key = copyBytes(key)
-	node.value = copyBytes(value)
-	node.dKey = copyBytes(dKey)
+	node.entity = copySortedMapEntity(entity)
 	node.forwards = make([](*skipListNode), level)
 	return &node
 }
 
-// NewSkipList returns a skiplist using default configuration.
-func NewSkipList(less func(s, t []byte) bool) *SkipList {
-	var sl SkipList
+// newSkipList returns a skipList using default configuration.
+func newSkipList(less func(s, t []byte) bool) *skipList {
+	var sl skipList
 
 	sl._size = 0
 	sl.less = less
-	sl.equal = bytes.Equal
 
-	sl.probability = defaultProbability
-	sl.maxLevel = defaultMaxLevel
-	sl.head = newSkipListNode(nil, nil, nil, sl.maxLevel) // initialize head-node with maxLevel
+	sl.probability = defaultSkipListProbability
+	sl.maxLevel = defaultSkipListMaxLevel
+	sl.head = newSkipListNode(nil, nil, sl.maxLevel) // initialize head-node with maxLevel
 
 	rand.Seed(time.Now().Unix()) // optional: reset random number seed
 
 	return &sl
 }
 
-// NewSkipListWith returns a skiplist using custom configuration.
-func NewSkipListWith(less func(s, t []byte) bool, probability float32, maxLevel int) *SkipList {
-	var sl SkipList
+// newskipListWith returns a skipList using custom configuration.
+func newSkipListWith(less func(s, t []byte) bool, probability float32, maxLevel int) *skipList {
+	var sl skipList
 
 	sl._size = 0
+
 	sl.less = less
-	sl.equal = bytes.Equal
 
 	sl.probability = probability
 	sl.maxLevel = maxLevel
-	sl.head = newSkipListNode(nil, nil, nil, sl.maxLevel) // initialize head-node with maxLevel
+
+	sl.head = newSkipListNode(nil, nil, sl.maxLevel) // initialize head-node with maxLevel
 
 	rand.Seed(time.Now().Unix()) // optional: reset random number seed
 
@@ -99,7 +80,7 @@ func NewSkipListWith(less func(s, t []byte) bool, probability float32, maxLevel 
 }
 
 // randomLevel returns a random level according to configuration
-func (sl *SkipList) randomLevel() int {
+func (sl *skipList) randomLevel() int {
 	level := 1
 	for rand.Float32() < sl.probability && level < sl.maxLevel {
 		level++
@@ -107,60 +88,66 @@ func (sl *SkipList) randomLevel() int {
 	return level
 }
 
-// Size returns the number of kv entries in the skiplist
-func (sl *SkipList) Size() int {
+// Size returns the number of kv entries in the skipList
+func (sl *skipList) Size() int {
 	return sl._size
 }
 
-// Empty returns whether skiplist is empty
-func (sl *SkipList) Empty() bool {
+// Empty returns whether skipList is empty
+func (sl *skipList) Empty() bool {
 	return sl.Size() == 0
 }
 
 // Get returns the copy of value by key.
 // If the key is not found, it returns (nil, false).
-func (sl *SkipList) Get(key []byte) (value []byte, ok bool) {
+func (sl *skipList) Get(key []byte) (entity *sortedMapEntity, ok bool) {
+
 	x := sl.head
+
 	for i := sl.maxLevel - 1; i >= 0; i-- {
 		for x.forwards[i] != nil && sl.less(x.forwards[i].key, key) {
 			x = x.forwards[i] // skip
 		}
 	}
+
 	x = x.forwards[0]
-	if x != nil && sl.equal(x.key, key) {
-		return copyBytes(x.value), true
+
+	if x != nil && bytes.Equal(x.key, key) {
+		return x.entity, true
 	}
+
 	return nil, false
 }
 
-// Put inserts a kv entry into skiplist.
-func (sl *SkipList) Put(key, value, dKey []byte) error {
+// Put inserts a kv entry into skipList.
+func (sl *skipList) Put(key []byte, entity *sortedMapEntity) error {
 	// fmt.Println("head", sl.head)
 	// fmt.Printf("to insert: (%d, %d)\n", key, value)
 
 	update := make([]*skipListNode, sl.maxLevel)
 	x := sl.head
+
 	for i := sl.maxLevel - 1; i >= 0; i-- {
 		for x.forwards[i] != nil && sl.less(x.forwards[i].key, key) {
 			x = x.forwards[i] // skip
 		}
 		update[i] = x
 	}
+
 	x = x.forwards[0]
 
 	// fmt.Println("search done")
 
 	// replace existing old value with the new value, then return
-	if x != nil && sl.equal(x.key, key) {
-		x.value = copyBytes(value) // overwrite
-		x.dKey = copyBytes(dKey)   // overwrite
-		return nil                 // insert succeeded
+	if x != nil && bytes.Equal(x.key, key) {
+		x.entity = copySortedMapEntity(entity) // overwrite
+		return nil                             // insert succeeded
 	}
 
 	newNodeLevel := sl.randomLevel() // function `randomLevel` make sure `newNodeLevel < sl.maxLevel`
 	// fmt.Println("newNodeLevel", newNodeLevel)
 
-	newNode := newSkipListNode(key, value, dKey, newNodeLevel)
+	newNode := newSkipListNode(key, entity, newNodeLevel)
 	for i := 0; i < newNodeLevel; i++ {
 		newNode.forwards[i] = update[i].forwards[i]
 		update[i].forwards[i] = newNode
@@ -172,41 +159,41 @@ func (sl *SkipList) Put(key, value, dKey []byte) error {
 }
 
 // Del the kv entry by key
-func (sl *SkipList) Del(key []byte) error {
-	if sl.Empty() {
-		return nil
-	}
+// func (sl *skipList) Del(key []byte) error {
+// 	if sl.Empty() {
+// 		return nil
+// 	}
 
-	update := make([]*skipListNode, sl.maxLevel)
-	x := sl.head
-	for i := sl.maxLevel - 1; i >= 0; i-- {
-		for x.forwards[i] != nil && sl.less(x.forwards[i].key, key) {
-			x = x.forwards[i] // skip
-		}
-		update[i] = x
-	}
+// 	update := make([]*skipListNode, sl.maxLevel)
+// 	x := sl.head
+// 	for i := sl.maxLevel - 1; i >= 0; i-- {
+// 		for x.forwards[i] != nil && sl.less(x.forwards[i].key, key) {
+// 			x = x.forwards[i] // skip
+// 		}
+// 		update[i] = x
+// 	}
 
-	x = x.forwards[0]
+// 	x = x.forwards[0]
 
-	if x != nil && sl.equal(x.key, key) {
-		for i := 0; i < sl.maxLevel; i++ {
-			if update[i].forwards[i] != x {
-				return nil // level of x done
-			}
-			update[i].forwards[i] = x.forwards[i]
-		}
-		sl._size--
-	}
+// 	if x != nil && bytes.Equal(x.key, key) {
+// 		for i := 0; i < sl.maxLevel; i++ {
+// 			if update[i].forwards[i] != x {
+// 				return nil // level of x done
+// 			}
+// 			update[i].forwards[i] = x.forwards[i]
+// 		}
+// 		sl._size--
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 // Traverse traverses the skipList in order defined by lessFunc
-func (sl *SkipList) Traverse(operate func(key, value []byte)) {
+func (sl *skipList) Traverse(operation func(key []byte, entity *sortedMapEntity)) {
 	// itereate on level-0 which is a single linked list
 	x := sl.head.forwards[0]
 	for x != nil {
-		operate(x.key, x.value)
+		operation(x.key, x.entity)
 		x = x.forwards[0]
 	}
 }
@@ -222,7 +209,7 @@ func reverseStrings(ss []string) []string {
 	return ss
 }
 
-func (sl SkipList) String() string {
+func (sl skipList) String() string {
 	ss := []string{}
 
 	for i := 0; i < sl.maxLevel; i++ {

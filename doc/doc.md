@@ -292,7 +292,7 @@ In addition,
 - files in a level are sorted on $S$
 - **delete tiles** within a file are sorted on $S$
 - **pages with a delete tile are sorted on $D$**
-- entries within every page are sorted on $D$
+- entries within every page are sorted on $S$
 
 
 
@@ -317,10 +317,6 @@ The benefit of this approach is that these **pages can be dropped without having
   Pages containing entries at **the edge of the delete range**, might also contain some valid entries. 
 
   These pages are loaded and the valid entries are identified with **a tight for-loo**p on $D$ (since they are sorted on $S$).  
-
-
-
-**( Following this design, a page pool is required. )**
 
 
 

@@ -2,29 +2,55 @@ package lethe
 
 import (
 	"io"
-	"lethe/skiplist"
 	"sync"
 )
 
-type sortedMemMap interface {
+type sortedMapEntity struct {
+	key       []byte
+	value     []byte
+	deleteKey []byte
+	meta      keyMeta
+}
+
+type sortedMap interface {
 	Size() int
 	Empty() bool
-	Get(key []byte) (value []byte, ok bool)
-	Put(key, value, dKey []byte) error
-	Del(key []byte) error
-	Traverse(operate func(key, value []byte))
+	Get(key []byte) (entity *sortedMapEntity, ok bool)
+	Put(key []byte, entity *sortedMapEntity) error
+	Traverse(operation func(key []byte, entity *sortedMapEntity))
+}
+
+func copyBytes(src []byte) []byte {
+	if src == nil {
+		return nil
+	}
+	dst := make([]byte, len(src))
+	copy(dst, src)
+	return dst
+}
+
+func copySortedMapEntity(src *sortedMapEntity) *sortedMapEntity {
+	if src == nil {
+		return nil
+	}
+	dst := &sortedMapEntity{}
+	dst.key = copyBytes(src.key)
+	dst.value = copyBytes(src.value)
+	dst.deleteKey = copyBytes(src.deleteKey)
+	dst.meta = src.meta
+	return dst
 }
 
 type memTable struct {
 	mu      sync.Mutex
-	smm     sortedMemMap
+	smm     sortedMap
 	_nBytes int
 }
 
 func newMemTable(less func(s, t []byte) bool) *memTable {
 	mt := &memTable{}
 
-	mt.smm = skiplist.NewSkipList(less)
+	mt.smm = newSkipList(less)
 	mt._nBytes = 0
 
 	return mt
@@ -60,46 +86,43 @@ func (mt *memTable) Get(key []byte) (value []byte, ok bool) {
 	mt.mu.Lock()
 	defer mt.mu.Unlock()
 
-	return mt.smm.Get(key)
+	entity, found := mt.smm.Get(key)
+	if !found {
+		return nil, false
+	}
+	if entity.meta.opType == constOpDel {
+		return nil, false
+	}
+	return copyBytes(entity.value), true
 }
 
 // Put inserts a kv entry into memTable.
-func (mt *memTable) Put(key, value, dKey []byte) error {
+func (mt *memTable) Put(key, value, deleteKey []byte, meta keyMeta) error {
 	mt.mu.Lock()
 	defer mt.mu.Unlock()
 
-	mt._nBytes += (len(key) + len(value) + len(dKey))
+	mt._nBytes += (len(key) + len(value) + len(deleteKey) + 16) // meta is 16 bytes.
 
-	return mt.smm.Put(key, value, dKey)
-}
-
-// Del the kv entry by key
-func (mt *memTable) Del(key []byte) error {
-	mt.mu.Lock()
-	defer mt.mu.Unlock()
-
-	err := mt.smm.Del(key)
-	if err == nil {
-		mt._nBytes -= (len(key))
-	}
-
-	return err
+	return mt.smm.Put(key, &sortedMapEntity{
+		value:     value,
+		deleteKey: deleteKey,
+		meta:      meta,
+	})
 }
 
 // Traverse traverses the memTable in order defined by lessFunc
-func (mt *memTable) Traverse(operate func(key, value []byte)) {
+func (mt *memTable) Traverse(operation func(key []byte, entity *sortedMapEntity)) {
 	mt.mu.Lock()
 	defer mt.mu.Unlock()
 
-	mt.smm.Traverse(operate)
+	mt.smm.Traverse(operation)
 }
 
 // flush to w
 func (mt *memTable) flush(w io.Writer) error {
 
-	// TODO
-	mt.Traverse(func(key, value []byte) {
-
+	mt.Traverse(func(key []byte, entity *sortedMapEntity) {
+		// TODO
 	})
 
 	return nil

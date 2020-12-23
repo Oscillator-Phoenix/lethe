@@ -54,7 +54,7 @@ func TestBasic1(t *testing.T) {
 	for i := 0; i < batchSize; i++ {
 		v, err := c.Get(ks[i], ropts)
 		if err != nil {
-			t.Fatalf("[%d/%d] Get %v\n", err, i, len(ks))
+			t.Fatalf("[%d/%d] Get %v\n", i, len(ks), err)
 		}
 		if v == nil {
 			t.Fatalf("[%d/%d] Get failed\n", i, len(ks))

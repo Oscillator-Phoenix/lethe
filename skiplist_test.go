@@ -1,4 +1,4 @@
-package skiplist
+package lethe
 
 import (
 	"bytes"
@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	stringLessFunc LessFunc = func(s, t []byte) bool { return string(s) < string(t) }
-	intLessFunc    LessFunc = func(s, t []byte) bool { return bytesToInt(s) < bytesToInt(t) }
+	stringLessFunc = func(s, t []byte) bool { return string(s) < string(t) }
+	intLessFunc    = func(s, t []byte) bool { return bytesToInt(s) < bytesToInt(t) }
 )
 
 func intToBytes(n int) []byte {
@@ -32,19 +32,19 @@ func TestRandomLevel(t *testing.T) {
 	// TODO
 }
 
-func simpleExample() *SkipList {
-	sl := NewSkipList(intLessFunc)
+func simpleExample() *skipList {
+	sl := newSkipList(intLessFunc)
 	simpleExamplePut(sl)
 	return sl
 }
 
-func simpleExampleWith(probability float32, maxLevel int) *SkipList {
-	sl := NewSkipListWith(intLessFunc, probability, maxLevel)
+func simpleExampleWith(probability float32, maxLevel int) *skipList {
+	sl := newSkipListWith(intLessFunc, probability, maxLevel)
 	simpleExamplePut(sl)
 	return sl
 }
 
-func simpleExamplePut(sl *SkipList) {
+func simpleExamplePut(sl *skipList) {
 	xs := []int{3, 6, 7, 9, 12, 17, 19, 21, 25, 26}
 	rand.Shuffle(len(xs), func(i, j int) {
 		xs[i], xs[j] = xs[j], xs[i]
@@ -53,14 +53,16 @@ func simpleExamplePut(sl *SkipList) {
 	for i := 0; i < len(xs); i++ {
 		k := intToBytes(xs[i])
 		v := intToBytes(xs[i])
-		if err := sl.Put(k, v, nil); err != nil {
+		e := &sortedMapEntity{}
+		e.value = v
+		if err := sl.Put(k, e); err != nil {
 			panic("Put fialed")
 		}
 	}
 }
 
 func TestPut1(t *testing.T) {
-	sl := NewSkipList(intLessFunc)
+	sl := newSkipList(intLessFunc)
 	// fmt.Println(sl)
 
 	xs := []int{3, 6, 7, 9, 12, 17, 19, 21, 25, 26}
@@ -72,7 +74,9 @@ func TestPut1(t *testing.T) {
 	for i := 0; i < len(xs); i++ {
 		k := intToBytes(xs[i])
 		v := intToBytes(xs[i])
-		if err := sl.Put(k, v, nil); err != nil {
+		e := &sortedMapEntity{}
+		e.value = v
+		if err := sl.Put(k, e); err != nil {
 			t.Logf("faild at insert element xs[%d]=%s", i, string(k))
 			t.Log("xs", xs)
 			t.Fail()
@@ -80,9 +84,9 @@ func TestPut1(t *testing.T) {
 	}
 
 	ys := []int{}
-	sl.Traverse(func(key, value []byte) {
+	sl.Traverse(func(key []byte, entity *sortedMapEntity) {
 		// fmt.Printf("(%d, %d) ", key, value)
-		ys = append(ys, bytesToInt(value))
+		ys = append(ys, bytesToInt(entity.value))
 	})
 
 	sort.Ints(xs)
@@ -94,21 +98,23 @@ func TestPut1(t *testing.T) {
 }
 
 func TestInsert2(t *testing.T) {
-	build := func(xs []int, sl *SkipList) {
+	build := func(xs []int, sl *skipList) {
 		for i := 0; i < len(xs); i++ {
 			k := intToBytes(xs[i])
 			v := intToBytes(xs[i])
-			if err := sl.Put(k, v, nil); err != nil {
+			e := &sortedMapEntity{}
+			e.value = v
+			if err := sl.Put(k, e); err != nil {
 				t.Logf("faild at insert element xs[%d]=%d", i, xs[i])
 				t.Fail()
 			}
 		}
 	}
 
-	check := func(xs []int, sl *SkipList) {
+	check := func(xs []int, sl *skipList) {
 		ys := []int{}
-		sl.Traverse(func(key, value []byte) {
-			ys = append(ys, bytesToInt(value))
+		sl.Traverse(func(key []byte, entity *sortedMapEntity) {
+			ys = append(ys, bytesToInt(entity.value))
 		})
 		sort.Ints(xs)
 		for i := 0; i < len(xs); i++ {
@@ -147,7 +153,7 @@ func TestInsert2(t *testing.T) {
 	scales := newRandomScale(testTimes)
 	for i := 0; i < len(scales); i++ {
 		xs := newRandomInts(scales[i])
-		sl := NewSkipList(intLessFunc)
+		sl := newSkipList(intLessFunc)
 		build(xs, sl)
 		check(xs, sl)
 

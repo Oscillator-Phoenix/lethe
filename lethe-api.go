@@ -6,6 +6,9 @@ import (
 )
 
 var (
+	// ErrPlaceholder is used when you need to return an error that is undefined.
+	ErrPlaceholder = errors.New("error-placeholder")
+
 	// ErrKeyNotFound is returned when the key is not found.
 	ErrKeyNotFound = errors.New("key-not-found")
 

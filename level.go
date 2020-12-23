@@ -130,7 +130,7 @@ func (lsm *collection) findOverlapFiles(lv *level, target *sstFile) []*sstFile {
 }
 
 // getFromLevel gets value by key from a level
-func (lsm *collection) getFromLevel(lv *level, key []byte) (value []byte) {
+func (lsm *collection) getFromLevel(lv *level, key []byte) (value []byte, err error) {
 	// Level lock
 	lv.mu.Lock()
 	defer lv.mu.Unlock()
@@ -204,11 +204,11 @@ func (lsm *collection) getFromLevel(lv *level, key []byte) (value []byte) {
 	// if key is not found in newer file, search in older file.
 	for i := len(lv.files) - 1; i >= 0; i-- {
 		if value := sstFileGet(lv.files[i]); value != nil {
-			return value
+			return value, nil
 		}
 	}
 
-	return nil
+	return nil, nil // `value := nil` means not found
 }
 
 // computeTTL is a pure function computing the TTL of a level
