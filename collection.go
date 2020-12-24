@@ -36,15 +36,18 @@ type collection struct {
 	levels []*level // `Level 1` ~ `Level L-1`
 
 	// persistence
-	// cancel func of persistence, init in Start() and then used in Close()
-	persistCancel context.CancelFunc
+	// immutable memTable queue
+	immutableQ *immutableQueue
 	// persist trigger
 	persistTrigger chan persistTask
+	// cancel func of persistence, init in Start() and then used in Close()
+	persistCancel context.CancelFunc
 
 	// compaction
-	// cancel func of compaction, init in Start() and then used in Close()
-	compactCancel  context.CancelFunc
+	// compaction trigger
 	compactTrigger chan compactTask
+	// cancel func of compaction, init in Start() and then used in Close()
+	compactCancel context.CancelFunc
 }
 
 func newCollection(options *CollectionOptions) *collection {
@@ -67,6 +70,7 @@ func newCollection(options *CollectionOptions) *collection {
 	}
 
 	// persist
+	lsm.immutableQ = newImmutableQueue()
 	lsm.persistTrigger = make(chan persistTask, lsm.options.persistTriggerBufLen)
 	persistCtx, persistCancel := context.WithCancel(context.Background())
 	lsm.persistCancel = persistCancel
@@ -109,26 +113,45 @@ func (lsm *collection) Get(key []byte, readOptions *ReadOptions) ([]byte, error)
 		return nil, ErrPrimaryKeyTooLarge
 	}
 
-	// lookup on memory table
-	if value, found := lsm.curMemTable.Get(key); found {
-		return value, nil
+	// lookup on the current memTable
+	{
+		value, found, deleted := lsm.curMemTable.Get(key)
+		if found {
+			return value, nil
+		}
+		if deleted {
+			return nil, ErrKeyNotFound
+		}
 	}
 
-	// lookup on persisted levels with disk IO
-	// index i : less(newer) <===> greater(older)
-	// for i := 0; i < len(lsm.levels); i++ {
+	// look up on immutable memTables
+	{
+		value, found, deleted := lsm.immutableQ.Get(key)
+		if found {
+			return value, nil
+		}
+		if deleted {
+			return nil, ErrKeyNotFound
+		}
+	}
 
-	// 	value, err := lsm.getFromLevel(lsm.levels[i], key)
+	// loop up on persisted levels
+	{
+		// index i : less(newer) <===> greater(older)
+		// for i := 0; i < len(lsm.levels); i++ {
 
-	// 	if err != nil {
-	// 		log.Printf("[internal error] %v\n", err)
-	// 		return nil, ErrPlaceholder
-	// 	}
+		// 	value, err := lsm.getFromLevel(lsm.levels[i], key)
 
-	// 	if value != nil {
-	// 		break
-	// 	}
-	// }
+		// 	if err != nil {
+		// 		log.Printf("[internal error] %v\n", err)
+		// 		return nil, ErrPlaceholder
+		// 	}
+
+		// 	if value != nil {
+		// 		break
+		// 	}
+		// }
+	}
 
 	return nil, ErrKeyNotFound
 }
@@ -148,46 +171,36 @@ func (lsm *collection) Put(key, value, deleteKey []byte, writeOptions *WriteOpti
 
 	// TODO: add lock to prevent from Put while changing curMemTable
 	meta := keyMeta{
-		seqNum: lsm.getSeqNum(),
-		opType: constOpPut, // Put
+		seqNum: lsm.getSeqNum(), // lsm lock
+		opType: constOpPut,      // Put
 	}
 
 	// put KV into memTable
-	if err := lsm.curMemTable.Put(key, value, deleteKey, meta); err != nil {
+	if err := lsm.curMemTable.Put(key, value, deleteKey, meta); err != nil { // lsm.curMemTable lock
 		return err
 	}
 
-	// TODO
-	// // if the capcity of memTable meets limit, then trigger a persist
-	// if lsm.curMemTable.nBytes() > lsm.options.MemTableBytesLimit {
+	// if the capcity of memTable meets limit, then trigger a persist
+	// test and lock
+	if lsm.curMemTable.nBytes() > lsm.options.MemTableBytesLimit {
 
-	// 	// create a new sstFile
+		lsm.curMemTable.Lock() // lock
 
-	// 	// commit a perstist task
-	// 	// lsm.persistTrigger <- persistTask{
-	// 	// 	mt: lsm.curMemTable,
-	// 	// }
+		if lsm.curMemTable.nBytes() > lsm.options.MemTableBytesLimit {
 
-	// 	file := lsm.levels[0].addSSTFile(lsm.curMemTable)
+			imt := lsm.curMemTable.immutable() // to immutable
 
-	// 	lsm.curMemTableMutex.Lock()
-	// 	lsm.curMemTable = newMemTable(lsm.options.PrimaryKeyLess)
-	// 	lsm.curMemTableMutex.Unlock()
-	// }
+			// one immutable trigger one persist task
+			lsm.immutableQ.push(imt)
+			lsm.persistTrigger <- persistTask{}
+
+			lsm.curMemTable.reset() // reset
+		}
+
+		lsm.curMemTable.Unlock() // unlock
+	}
 
 	return nil
-}
-
-func (lsm *collection) compactIfNecessary() {
-
-	// for i := 0; i < len(lsm.levels)-1; i++ {
-	// 	if lsm.levels[i].nBytes() > limit {
-	// 		lsm.soCompactionTrigger <- compactTask{
-	// 			curLevel: lsm.levels[i],
-	// 			nextLevel:lsm.levels[i+1]
-	// 		}
-	// 	}
-	// }
 }
 
 // Del deletes a key-val entry from the Collection.

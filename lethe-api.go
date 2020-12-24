@@ -71,7 +71,7 @@ type CollectionOptions struct {
 var DefaultCollectionOptions = CollectionOptions{
 	PrimaryKeyLess:         func(s, t []byte) bool { return string(s) < string(t) }, //
 	DeleteKeyLess:          func(s, t []byte) bool { return string(s) < string(t) }, //
-	MemTableBytesLimit:     64 * 1024,                                               // 64KB
+	MemTableBytesLimit:     4 * 1024 * 1024,                                         // 4MB
 	LevelSizeRatio:         10.0,                                                    //
 	DirPath:                "",                                                      //
 	CreateDirIfMissing:     false,                                                   //

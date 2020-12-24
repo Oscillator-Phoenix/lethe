@@ -2,7 +2,6 @@ package lethe
 
 import (
 	"fmt"
-	"io"
 	"sync"
 )
 
@@ -21,9 +20,15 @@ type sortedMap interface {
 }
 
 type memTable struct {
-	mu      sync.Mutex
-	smm     sortedMap
+	sync.Mutex
+
 	_nBytes int
+	less    func(s, t []byte) bool
+	smm     sortedMap
+}
+
+type immutableMemTable struct {
+	memTable
 }
 
 func copyBytes(src []byte) []byte {
@@ -66,59 +71,90 @@ func (e sortedMapEntity) String() string {
 		opTypePrint(e.meta.opType))
 }
 
+// ---------------------------------------------------------------------------
+
 func newMemTable(less func(s, t []byte) bool) *memTable {
 	mt := &memTable{}
 
-	mt.smm = newSkipList(less)
 	mt._nBytes = 0
+	mt.less = less
+	mt.smm = newSkipList(mt.less)
 
 	return mt
 }
 
-// nBytes return the number of bytes used
-func (mt *memTable) nBytes() int {
-	mt.mu.Lock()
-	defer mt.mu.Unlock()
+// ---------------------------------------------------------------------------
 
+// no thread-safe
+func (mt *memTable) immutable() *immutableMemTable {
+	// imt creates a new sync.Mutex
+	imt := &immutableMemTable{}
+	imt._nBytes = mt._nBytes
+	imt.less = mt.less
+	imt.smm = mt.smm
+	return imt
+}
+
+// no thread safe
+func (mt *memTable) reset() {
+	mt._nBytes = 0
+	mt.smm = newSkipList(mt.less)
+}
+
+// nBytes return the number of bytes used
+// no thread-safe
+func (mt *memTable) nBytes() int {
 	return mt._nBytes
 }
 
+// ---------------------------------------------------------------------------
+
 // Size returns the number of kv entries in the memTable
+// thread-safe
 func (mt *memTable) Size() int {
-	mt.mu.Lock()
-	defer mt.mu.Unlock()
+	mt.Lock()
+	defer mt.Unlock()
 
 	return mt.smm.Size()
 }
 
 // Empty returns whether the memTable is empty
+// thread-safe
 func (mt *memTable) Empty() bool {
-	mt.mu.Lock()
-	defer mt.mu.Unlock()
+	mt.Lock()
+	defer mt.Unlock()
 
 	return mt.smm.Empty()
 }
 
 // Get returns the copy of value by key.
 // If the key is not found, it returns (nil, false).
-func (mt *memTable) Get(key []byte) (value []byte, ok bool) {
-	mt.mu.Lock()
-	defer mt.mu.Unlock()
+// thread-safe
+func (mt *memTable) Get(key []byte) (value []byte, found, deleted bool) {
+	mt.Lock()
+	defer mt.Unlock()
 
 	entity, found := mt.smm.Get(key)
+
+	// key not found
 	if !found {
-		return nil, false
+		return nil, false, false
 	}
-	if entity.meta.opType == constOpDel {
-		return nil, false
+
+	// found the entity but a tombstone
+	if entity.meta.opType == constOpDel { // tombstone
+		return nil, false, true
 	}
-	return copyBytes(entity.value), true
+
+	// found the valid entity
+	return copyBytes(entity.value), true, false
 }
 
 // Put inserts a kv entry into memTable.
+// thread-safe
 func (mt *memTable) Put(key, value, deleteKey []byte, meta keyMeta) error {
-	mt.mu.Lock()
-	defer mt.mu.Unlock()
+	mt.Lock()
+	defer mt.Unlock()
 
 	mt._nBytes += (len(key) + len(value) + len(deleteKey) + 16) // meta is 16 bytes.
 
@@ -134,19 +170,10 @@ func (mt *memTable) Put(key, value, deleteKey []byte, meta keyMeta) error {
 }
 
 // Traverse traverses the memTable in order defined by lessFunc
+// thread-safe
 func (mt *memTable) Traverse(operation func(key []byte, entity *sortedMapEntity)) {
-	mt.mu.Lock()
-	defer mt.mu.Unlock()
+	mt.Lock()
+	defer mt.Unlock()
 
 	mt.smm.Traverse(operation)
-}
-
-// flush to w
-func (mt *memTable) flush(w io.Writer) error {
-
-	mt.Traverse(func(key []byte, entity *sortedMapEntity) {
-		// TODO
-	})
-
-	return nil
 }

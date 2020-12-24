@@ -18,7 +18,7 @@ func TestBasic1(t *testing.T) {
 	}
 	defer c.Close()
 
-	batchSize := 1000 * 1000
+	batchSize := 2 * 1000 * 1000
 
 	fmt.Println("genBatchKVA...")
 	ks, vs, as := genBatchKVA(batchSize)
