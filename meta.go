@@ -6,8 +6,8 @@ const (
 	constPutMask uint64 = 1
 	constDelMask uint64 = 2
 
-	constOpPut uint64 = constOpBase & (constPutMask << 56) // 0x0100000000000000
-	constOpDel uint64 = constOpBase & (constDelMask << 56) // 0x0200000000000000
+	constOpPut uint64 = constOpBase | (constPutMask << 56) // 0x0100000000000000
+	constOpDel uint64 = constOpBase | (constDelMask << 56) // 0x0200000000000000
 )
 
 type keyMeta struct {

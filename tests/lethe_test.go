@@ -18,7 +18,8 @@ func TestBasic1(t *testing.T) {
 	}
 	defer c.Close()
 
-	batchSize := 1000 * 100
+	batchSize := 1000 * 1000
+
 	fmt.Println("genBatchKVA...")
 	ks, vs, as := genBatchKVA(batchSize)
 	fmt.Println("genBatchKVA done")
@@ -42,7 +43,7 @@ func TestBasic1(t *testing.T) {
 	// Put
 	fmt.Println("Put ...")
 	for i := 0; i < batchSize; i++ {
-		if err = c.Put(ks[i], vs[i], []byte{}, wopts); err != nil {
+		if err = c.Put(ks[i], vs[i], []byte("..."), wopts); err != nil {
 			t.Fatal("Put\n")
 		}
 		// t.Logf("Put [%s] [%s]\n", string(ks[i]), string(vs[i]))

@@ -1,12 +1,12 @@
 package lethe
 
 import (
+	"fmt"
 	"io"
 	"sync"
 )
 
 type sortedMapEntity struct {
-	key       []byte
 	value     []byte
 	deleteKey []byte
 	meta      keyMeta
@@ -18,6 +18,12 @@ type sortedMap interface {
 	Get(key []byte) (entity *sortedMapEntity, ok bool)
 	Put(key []byte, entity *sortedMapEntity) error
 	Traverse(operation func(key []byte, entity *sortedMapEntity))
+}
+
+type memTable struct {
+	mu      sync.Mutex
+	smm     sortedMap
+	_nBytes int
 }
 
 func copyBytes(src []byte) []byte {
@@ -34,17 +40,30 @@ func copySortedMapEntity(src *sortedMapEntity) *sortedMapEntity {
 		return nil
 	}
 	dst := &sortedMapEntity{}
-	dst.key = copyBytes(src.key)
 	dst.value = copyBytes(src.value)
 	dst.deleteKey = copyBytes(src.deleteKey)
 	dst.meta = src.meta
 	return dst
 }
 
-type memTable struct {
-	mu      sync.Mutex
-	smm     sortedMap
-	_nBytes int
+func (e sortedMapEntity) String() string {
+
+	opTypePrint := func(opType uint64) string {
+		switch e.meta.opType {
+		case constOpPut:
+			return "Put"
+		case constOpDel:
+			return "Del"
+		default:
+			return "Unknown"
+		}
+	}
+
+	return fmt.Sprintf("value [%s], deleteKey [%s], meta.seqNum [%d], meta.opType [%s]",
+		string(e.value),
+		string(e.deleteKey),
+		e.meta.seqNum,
+		opTypePrint(e.meta.opType))
 }
 
 func newMemTable(less func(s, t []byte) bool) *memTable {
@@ -103,11 +122,15 @@ func (mt *memTable) Put(key, value, deleteKey []byte, meta keyMeta) error {
 
 	mt._nBytes += (len(key) + len(value) + len(deleteKey) + 16) // meta is 16 bytes.
 
-	return mt.smm.Put(key, &sortedMapEntity{
+	entity := &sortedMapEntity{
 		value:     value,
 		deleteKey: deleteKey,
 		meta:      meta,
-	})
+	}
+
+	// log.Printf("memTable Put { key[%s] : %v }\n", string(key), entity)
+
+	return mt.smm.Put(key, entity)
 }
 
 // Traverse traverses the memTable in order defined by lessFunc

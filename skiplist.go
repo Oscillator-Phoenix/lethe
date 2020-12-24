@@ -38,10 +38,13 @@ type skipList struct {
 
 // newSkipListNode return a skipListNode via copying data
 func newSkipListNode(key []byte, entity *sortedMapEntity, level int) *skipListNode {
+
 	var node skipListNode
+
 	node.key = copyBytes(key)
 	node.entity = copySortedMapEntity(entity)
 	node.forwards = make([](*skipListNode), level)
+
 	return &node
 }
 
