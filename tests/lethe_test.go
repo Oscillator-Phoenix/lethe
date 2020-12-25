@@ -11,7 +11,7 @@ func init() {
 	log.SetFlags(log.Ldate | log.Lmicroseconds | log.Llongfile)
 }
 
-func TestBasic1(t *testing.T) {
+func TestGetPutDelSerial(t *testing.T) {
 	c, err := lethe.NewCollection(lethe.DefaultCollectionOptions)
 	if err != nil {
 		t.Fatal("NewCollection\n")
@@ -94,4 +94,8 @@ func TestBasic1(t *testing.T) {
 	}
 	fmt.Println("Get After Del done")
 
+}
+
+func TestGetPutDelParallel(t *testing.T) {
+	// TODO
 }

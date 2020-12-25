@@ -61,7 +61,7 @@ func (iq *immutableQueue) Get(key []byte) (value []byte, found, deleted bool) {
 		if deleted {
 			return nil, false, true
 		}
-		// if not found and not deleted, keep search in older immutable memTable
+		// if not found and not deleted, keep searching in older immutable memTable.
 	}
 
 	return nil, false, false

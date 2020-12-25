@@ -171,7 +171,7 @@ func (lsm *collection) Put(key, value, deleteKey []byte, writeOptions *WriteOpti
 
 	// TODO: add lock to prevent from Put while changing curMemTable
 	meta := keyMeta{
-		seqNum: lsm.getSeqNum(), // lsm lock
+		seqNum: lsm.getSeqNum(), // atomic
 		opType: constOpPut,      // Put
 	}
 
@@ -180,7 +180,14 @@ func (lsm *collection) Put(key, value, deleteKey []byte, writeOptions *WriteOpti
 		return err
 	}
 
+	lsm.resetCurMemTableIfNecessary()
+
+	return nil
+}
+
+func (lsm *collection) resetCurMemTableIfNecessary() {
 	// if the capcity of memTable meets limit, then trigger a persist
+
 	// test and lock
 	if lsm.curMemTable.nBytes() > lsm.options.MemTableBytesLimit {
 
@@ -190,7 +197,7 @@ func (lsm *collection) Put(key, value, deleteKey []byte, writeOptions *WriteOpti
 
 			imt := lsm.curMemTable.immutable() // to immutable
 
-			// one immutable trigger one persist task
+			// one immutable triggers one persist task
 			lsm.immutableQ.push(imt)
 			lsm.persistTrigger <- persistTask{}
 
@@ -199,8 +206,6 @@ func (lsm *collection) Put(key, value, deleteKey []byte, writeOptions *WriteOpti
 
 		lsm.curMemTable.Unlock() // unlock
 	}
-
-	return nil
 }
 
 // Del deletes a key-val entry from the Collection.
@@ -212,14 +217,16 @@ func (lsm *collection) Del(key []byte, writeOptions *WriteOptions) error {
 
 	// TODO: add lock to prevent from Put while changing curMemTable
 	meta := keyMeta{
-		seqNum: lsm.getSeqNum(),
-		opType: constOpDel, // Del, tombstone
+		seqNum: lsm.getSeqNum(), // atomic
+		opType: constOpDel,      // Del, tombstone
 	}
 
 	// put tombstone into memTable
-	if err := lsm.curMemTable.Put(key, nil, nil, meta); err != nil {
+	if err := lsm.curMemTable.Put(key, nil, nil, meta); err != nil { // lsm.curMemTable lock
 		return err
 	}
+
+	lsm.resetCurMemTableIfNecessary()
 
 	return nil
 }
