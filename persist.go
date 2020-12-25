@@ -73,8 +73,7 @@ func (lsm *collection) persistDaemon(ctx context.Context) {
 		case task := <-lsm.persistTrigger:
 			{
 				log.Printf("[persist daemon] persist trigger task [%v], immutableQueue size [%d]\n", task, lsm.immutableQ.size())
-				// TODO
-				// lsm.immutable2sstFile()
+				lsm.persistOne()
 			}
 		case <-ctx.Done():
 			{
@@ -85,16 +84,35 @@ func (lsm *collection) persistDaemon(ctx context.Context) {
 	}
 }
 
-func (lsm *collection) immutable2sstFile() error {
-	imt := lsm.immutableQ.front()
+// buildSSTFile builds a sstFile from the immutableMemTable
+// sstFileName is the UNIQUE identifier of the sstFile
+func (lsm *collection) buildSSTFile(sstFileName string, imt *immutableMemTable) *sstFile {
+	file := &sstFile{}
+
+	file.fd = newSSTFileDescMock(sstFileName)
 
 	imt.Traverse(func(key []byte, entity *sortedMapEntity) {
 		// TODO
 	})
-	// file := lsm.levels[0].addSSTFile()
 
-	// if the persistence of head done, pop the head from queue
-	lsm.immutableQ.pop()
+	return file
+}
+
+func (lsm *collection) persistOne() error {
+
+	// the head of queue is the oldest immutable memTable
+	imt := lsm.immutableQ.front()
+
+	file := lsm.buildSSTFile("", imt)
+
+	// TODO / Bugs
+	// two operations below should be packed to a atomic behavior
+	{
+		// add the new sstFile to the top peristed level
+		lsm.addSSTFileOnLevel(lsm.levels[0], file)
+		// if the persistence of head done, pop the head from queue
+		lsm.immutableQ.pop()
+	}
 
 	return nil
 }

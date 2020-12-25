@@ -15,7 +15,7 @@ type keyMeta struct {
 	opType uint64 // opType only uses the highest 8 bits
 }
 
-type ssTFileMeta struct {
+type sstFileMeta struct {
 	// TODO
 }
 

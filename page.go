@@ -2,6 +2,7 @@ package lethe
 
 import (
 	"lethe/bloomfilter"
+	"log"
 )
 
 const (
@@ -30,17 +31,17 @@ func (p *page) bloomFilterExists(key []byte) bool {
 	return true
 }
 
-// loadKVS loads data from a reader using the offset of page
-func (p *page) loadKVs(r sstFileReader) (keys, values [][]byte, err error) {
-
+// loadKVS loads data from a sstFileDesc using the offset of page
+func (p *page) load(desc sstFileDesc) (ks, vs [][]byte, metas []keyMeta) {
 	pageData := make([]byte, constNumByteOfPage)
 
-	if _, err := r.ReadAt(pageData, p.offset); err != nil {
-		return nil, nil, err
+	if _, err := desc.ReadAt(pageData, p.offset); err != nil {
+		log.Printf("[err] page load %v", err)
+		return nil, nil, nil
 	}
 
 	// TODO
-	// build keys, values from pageData
+	// build ks, vs, metas from pageData
 
 	return nil, nil, nil
 }

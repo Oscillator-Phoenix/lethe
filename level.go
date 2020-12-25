@@ -1,7 +1,6 @@
 package lethe
 
 import (
-	"bytes"
 	"log"
 	"math"
 	"sync"
@@ -15,7 +14,7 @@ import (
 
 type level struct {
 	// lock for level filed
-	mu sync.Mutex
+	sync.Mutex
 
 	files []*sstFile
 
@@ -26,9 +25,33 @@ type level struct {
 // newLevel returns a new level holding no sstFile
 func newLevel() *level {
 	lv := &level{}
+
 	lv.files = []*sstFile{}
+
 	return lv
 }
+
+// -----------------------------------------------------------------------------
+
+// computeTTL is a pure function computing the TTL of a level
+// In paper 4.1.2 Computing d_i
+// deletePersistThreshold is denoted by D_th
+// levelID is denoted by i
+// levelSizeRatio is denoted by T
+// numOfLevel is denoted by L
+func computeTTL(deletePersistThreshold time.Duration, levelID int, levelSizeRatio int, numOfLevel int) time.Duration {
+	Dth := float64(int(deletePersistThreshold))
+	i := float64(levelID)
+	T := float64(levelSizeRatio)
+	L := float64(numOfLevel)
+
+	d0 := Dth * (T - 1.0) / (math.Pow(T, L-1.0) - 1.0) // assert( math.Pow(T, L-1.0) != 1.0 )
+	di := d0 * math.Pow(T, i)
+
+	return time.Duration(int(di))
+}
+
+// -----------------------------------------------------------------------------
 
 // setTTL sets TTL for each level in LSM
 func (lsm *collection) setTTL() {
@@ -42,13 +65,13 @@ func (lsm *collection) setTTL() {
 			1+len(lsm.levels))                  // L = `Level 0` + `L-1 persisted levels`
 
 		// update TTL of this level
-		lsm.levels[i].mu.Lock()
+		lsm.levels[i].Lock()
 		lsm.levels[i].ttl = ttl
-		lsm.levels[i].mu.Unlock()
+		lsm.levels[i].Unlock()
 	}
 }
 
-// addNewLevel adds a new level to the bottom of LSM with TTL resetting
+// addNewLevel adds a new level to the bottom of LSM and reset TTL for each level
 func (lsm *collection) addNewLevel() error {
 	// LSM lock
 	lsm.Lock()
@@ -67,11 +90,20 @@ func (lsm *collection) addNewLevel() error {
 	return nil
 }
 
+func (lsm *collection) addSSTFileOnLevel(lv *level, file *sstFile) {
+	lv.Lock()
+	lv.Unlock()
+
+	lv.files = append(lv.files, file)
+}
+
+// -----------------------------------------------------------------------------
+
 // replaceSSTFileOnLevel replace toRemove files with toInset files on the level
 func (lsm *collection) replaceFilesOnLevel(lv *level, toRemove []*sstFile, toInsert []*sstFile) error {
 	// Level Lock
-	lv.mu.Lock()
-	defer lv.mu.Unlock()
+	lv.Lock()
+	defer lv.Unlock()
 
 	if toRemove == nil {
 		// do nothing
@@ -106,8 +138,8 @@ func (lsm *collection) replaceFilesOnLevel(lv *level, toRemove []*sstFile, toIns
 // If there is no file overlapping with target file, then returns nil.
 func (lsm *collection) findOverlapFiles(lv *level, target *sstFile) []*sstFile {
 	// Level Lock
-	lv.mu.Lock()
-	defer lv.mu.Unlock()
+	lv.Lock()
+	defer lv.Unlock()
 
 	founds := []*sstFile{}
 
@@ -129,102 +161,27 @@ func (lsm *collection) findOverlapFiles(lv *level, target *sstFile) []*sstFile {
 	return founds
 }
 
+// -----------------------------------------------------------------------------
+
 // getFromLevel gets value by key from a level
-func (lsm *collection) getFromLevel(lv *level, key []byte) (value []byte, err error) {
+func (lsm *collection) getFromLevel(lv *level, key []byte) (value []byte, found, deleted bool) {
 	// Level lock
-	lv.mu.Lock()
-	defer lv.mu.Unlock()
-
-	less := lsm.options.PrimaryKeyLess
-
-	sstFileGet := func(sf *sstFile) []byte {
-		// Note that there are no duplicate keys in sstfile, i.e. all keys in a sstFile are unique.
-
-		// get from a page
-		pageGet := func(p *page) []byte {
-			// page fence pointer check (i.e. primaryKeyMin <= key <= primaryKeyMax)
-			if less(key, p.primaryKeyMin) || less(p.primaryKeyMax, key) {
-				return nil
-			}
-
-			// page-granularity bloom filter existence check
-			if p.bloomFilterExists(key) == false {
-				return nil
-			}
-
-			// load data form disk...
-			keys, values, _ := p.loadKVs(sf.fd)
-
-			// TODO
-			// binary search because entries within every page are sorted on primary key
-			for i := 0; i < len(keys); i++ {
-				if bytes.Equal(keys[i], key) {
-					return values[i]
-				}
-			}
-
-			return nil
-		}
-
-		// get from a delet tile
-		deleteTileGet := func(dt *deleteTile) []byte {
-			// delet tile fence pointer check (i.e. primaryKeyMin <= key <= primaryKeyMax)
-			if less(key, dt.primaryKeyMin) || less(dt.primaryKeyMax, key) {
-				return nil
-			}
-
-			// linear search because pages within a delete tile are sorted on delete key but not primary key
-			for i := 0; i < len(dt.pages); i++ {
-				if value := pageGet(dt.pages[i]); value != nil {
-					return value
-				}
-			}
-
-			return nil
-		}
-
-		// sstFile fence pointer check (i.e. primaryKeyMin <= key <= primaryKeyMax)
-		if less(key, sf.primaryKeyMin) || less(sf.primaryKeyMax, key) {
-			return nil
-		}
-
-		// TODO
-		// binary search because delete tiles within a sstfile are sorted on primary key
-		for i := 0; i < len(sf.tiles); i++ {
-			if value := deleteTileGet(sf.tiles[i]); value != nil {
-				return value
-			}
-		}
-
-		return nil
-	}
+	lv.Lock()
+	defer lv.Unlock()
 
 	// levelGet
 	// index i : greater(newer file) ==> less(older file)
 	// if key is not found in newer file, search in older file.
 	for i := len(lv.files) - 1; i >= 0; i-- {
-		if value := sstFileGet(lv.files[i]); value != nil {
-			return value, nil
+		value, found, deleted := lsm.getFromSSTFile(lv.files[i], key)
+		if found {
+			return value, true, false
 		}
+		if deleted {
+			return nil, false, true
+		}
+		// If key is not found and not deleted, keep searching in next sstFile
 	}
 
-	return nil, nil // `value := nil` means not found
-}
-
-// computeTTL is a pure function computing the TTL of a level
-// In paper 4.1.2 Computing d_i
-// deletePersistThreshold is denoted by D_th
-// levelID is denoted by i
-// levelSizeRatio is denoted by T
-// numOfLevel is denoted by L
-func computeTTL(deletePersistThreshold time.Duration, levelID int, levelSizeRatio int, numOfLevel int) time.Duration {
-	Dth := float64(int(deletePersistThreshold))
-	i := float64(levelID)
-	T := float64(levelSizeRatio)
-	L := float64(numOfLevel)
-
-	d0 := Dth * (T - 1.0) / (math.Pow(T, L-1.0) - 1.0) // assert( math.Pow(T, L-1.0) != 1.0 )
-	di := d0 * math.Pow(T, i)
-
-	return time.Duration(int(di))
+	return nil, false, false
 }
