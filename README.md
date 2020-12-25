@@ -3,7 +3,9 @@
 lethe is a LSM-based KV database which is a reproduction of the paper [Lethe: A Tunable Delete-Aware LSM Engine](https://dl.acm.org/doi/10.1145/3318464.3389757).
 
 <div align="center">
-  [![GitHub license](https://img.shields.io/github/license/mashape/apistatus.svg?style=flat-square)](https://github.com/Oscillator-Phoenix/lethe/blob/master/LICENSE)
+
+![GitHub](https://img.shields.io/github/license/Oscillator-Phoenix/lethe)
+
 </div>
 
 ---
