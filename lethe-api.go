@@ -58,6 +58,10 @@ type CollectionOptions struct {
 	// A LSM with L levels has one memTable(`Level 0`) and L-1 perist levels(`Level 1` to `Level L-1` ).
 	InitialLevelNum int
 
+	// PagesPerDeleteTile is the number of pages per delete tile,
+	// An import tuning knob of LSM tree.
+	PagesPerDeleteTile int
+
 	// ----------------------------------------------------------------------------
 
 	// Unexposed data filed
@@ -69,14 +73,15 @@ type CollectionOptions struct {
 
 // DefaultCollectionOptions are the default configuration options.
 var DefaultCollectionOptions = CollectionOptions{
-	PrimaryKeyLess:         func(s, t []byte) bool { return string(s) < string(t) }, //
-	DeleteKeyLess:          func(s, t []byte) bool { return string(s) < string(t) }, //
+	PrimaryKeyLess:         func(s, t []byte) bool { return string(s) < string(t) }, // dictionary order
+	DeleteKeyLess:          func(s, t []byte) bool { return string(s) < string(t) }, // dictionary order
 	MemTableBytesLimit:     4 * 1024 * 1024,                                         // 4MB
-	LevelSizeRatio:         10.0,                                                    //
+	LevelSizeRatio:         10.0,                                                    // practical value
 	DirPath:                "",                                                      //
 	CreateDirIfMissing:     false,                                                   //
 	DeletePersistThreshold: 24 * time.Hour,                                          // one day
-	InitialLevelNum:        6,                                                       //
+	InitialLevelNum:        6,                                                       // practical value
+	PagesPerDeleteTile:     8,                                                       // practical value
 
 	// -------------------------------------------
 
@@ -91,12 +96,12 @@ type CollectionStats struct {
 	// CurXXX
 }
 
-// ReadOptions are provided to Snapshot.Get().
+// ReadOptions are provided to Read operation.
 type ReadOptions struct {
 	// define some read options if necessary
 }
 
-// WriteOptions are provided to Collection.ExecuteBatch().
+// WriteOptions are provided to Write operation.
 type WriteOptions struct {
 	// define some write options if necessary
 }
@@ -105,8 +110,7 @@ type WriteOptions struct {
 // where a Collection is snapshot'able and atomically updatable.
 type Collection interface {
 
-	// Close synchronously stops background tasks and releases
-	// resources.
+	// Close synchronously stops background tasks and releases resources.
 	Close() error
 
 	// Get retrieves a value from the collection for a given key
@@ -119,14 +123,14 @@ type Collection interface {
 	// Del deletes a key-val entry from the Collection.
 	Del(key []byte, writeOptions *WriteOptions) error
 
-	// RangeDel deletes the range [lowKey, highKey] on the secondary key
+	// RangeDel deletes the range [lowKey, highKey] on the primary key
 	RangeDel(lowKey, highKey []byte, writeOptions *WriteOptions) error
 
 	// Options returns the options currently being used.
 	Options() CollectionOptions
 
-	// Stats returns stats for this collection.  Note that stats might
-	// be updated asynchronously.
+	// Stats returns stats for this collection.
+	// Note that stats might be updated asynchronously.
 	Stats() (*CollectionStats, error)
 
 	/*

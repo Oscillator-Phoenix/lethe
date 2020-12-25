@@ -26,13 +26,6 @@ func (iq *immutableQueue) push(imt *immutableMemTable) {
 	iq.imts = append(iq.imts, imt)
 }
 
-func (iq *immutableQueue) pop() {
-	iq.Lock()
-	defer iq.Unlock()
-
-	iq.imts = iq.imts[1:]
-}
-
 func (iq *immutableQueue) front() *immutableMemTable {
 	iq.Lock()
 	defer iq.Unlock()
@@ -61,7 +54,7 @@ func (iq *immutableQueue) Get(key []byte) (value []byte, found, deleted bool) {
 		if deleted {
 			return nil, false, true
 		}
-		// if not found and not deleted, keep searching in older immutable memTable.
+		// if not found and not deleted, keep searching in older immutable memTables.
 	}
 
 	return nil, false, false
@@ -90,6 +83,15 @@ func (lsm *collection) buildSSTFile(sstFileName string, imt *immutableMemTable) 
 	file := &sstFile{}
 
 	file.fd = newSSTFileDescMock(sstFileName)
+	file.tiles = []*deleteTile{}
+
+	file.primaryKeyMax = []byte{}
+	file.primaryKeyMin = []byte{}
+	file.deleteKeyMax = []byte{}
+	file.deleteKeyMin = []byte{}
+
+	file.aMax = 0
+	file.b = 0
 
 	imt.Traverse(func(key []byte, entity *sortedMapEntity) {
 		// TODO
@@ -103,15 +105,20 @@ func (lsm *collection) persistOne() error {
 	// the head of queue is the oldest immutable memTable
 	imt := lsm.immutableQ.front()
 
+	// time cost heavily
 	file := lsm.buildSSTFile("", imt)
 
-	// TODO / Bugs
-	// two operations below should be packed to a atomic behavior
+	// two operations below should be packed to a atomic action
 	{
+		lsm.immutableQ.Lock()
+
 		// add the new sstFile to the top peristed level
 		lsm.addSSTFileOnLevel(lsm.levels[0], file)
+
+		lsm.immutableQ.imts = lsm.immutableQ.imts[1:] // pop the head
+
 		// if the persistence of head done, pop the head from queue
-		lsm.immutableQ.pop()
+		lsm.immutableQ.Unlock()
 	}
 
 	return nil

@@ -19,7 +19,7 @@ type sstFile struct {
 	deleteKeyMax  []byte
 
 	// metadata
-	aMAX float64
+	aMax uint64
 	b    int
 }
 

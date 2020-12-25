@@ -10,6 +10,10 @@ const (
 	constOpDel uint64 = constOpBase | (constDelMask << 56) // 0x0200000000000000, tombstone
 )
 
+const (
+	constKeyMetaBytesLen int = 16
+)
+
 type keyMeta struct {
 	seqNum uint64 // sequence number of operation
 	opType uint64 // opType only uses the highest 8 bits
