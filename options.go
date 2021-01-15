@@ -21,6 +21,7 @@ func beautifulNumByte(nbyte int) string {
 	}
 
 	var helper func(n int) string
+
 	helper = func(n int) string {
 		switch {
 		case n == 0:

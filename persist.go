@@ -82,7 +82,7 @@ func (lsm *collection) persistDaemon(ctx context.Context) {
 func (lsm *collection) buildSSTFile(sstFileName string, imt *immutableMemTable) *sstFile {
 	file := &sstFile{}
 
-	file.fd = newSSTFileDescMock(sstFileName)
+	file.fd = newMemSSTFileDesc(sstFileName) // in-memory
 	file.tiles = []*deleteTile{}
 
 	file.primaryKeyMax = []byte{}
