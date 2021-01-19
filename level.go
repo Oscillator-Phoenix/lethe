@@ -8,9 +8,9 @@ import (
 )
 
 // Key Weaving Storage Layout
-// - files contain delete tiles, delete tiles within a file are sorted on primary key
+// - files contain delete tiles, delete tiles within a file are sorted on sort key
 // - delete-tiles contain pages, pages within a delete tile are sorted on delete key
-// - entries within every page are sorted on primary key
+// - entries within every page are sorted on sort key
 
 type level struct {
 	// lock for level filed
@@ -143,9 +143,9 @@ func (lsm *collection) findOverlapFiles(lv *level, target *sstFile) []*sstFile {
 
 	founds := []*sstFile{}
 
-	less := lsm.options.PrimaryKeyLess
+	less := lsm.options.SortKeyLess
 	isOverlap := func(f *sstFile) bool {
-		return !(less(target.primaryKeyMax, f.primaryKeyMin) || less(f.primaryKeyMax, target.primaryKeyMin))
+		return !(less(target.SortKeyMax, f.SortKeyMin) || less(f.SortKeyMax, target.SortKeyMin))
 	}
 
 	for i := 0; i < len(lv.files); i++ {

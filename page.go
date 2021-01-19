@@ -14,8 +14,8 @@ type page struct {
 	bloom  *bloomfilter.BloomFilter
 	offset int64
 
-	primaryKeyMin []byte
-	primaryKeyMax []byte
+	SortKeyMin []byte
+	SortKeyMax []byte
 	deleteKeyMin  []byte
 	deleteKeyMax  []byte
 }

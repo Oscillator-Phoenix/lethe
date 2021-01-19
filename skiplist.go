@@ -91,14 +91,14 @@ func (sl *skipList) randomLevel() int {
 	return level
 }
 
-// Size returns the number of kv entries in the skipList
-func (sl *skipList) Size() int {
+// Num returns the number of kv entries in the skipList
+func (sl *skipList) Num() int {
 	return sl._size
 }
 
 // Empty returns whether skipList is empty
 func (sl *skipList) Empty() bool {
-	return sl.Size() == 0
+	return sl.Num() == 0
 }
 
 // Get returns the copy of value by key.
@@ -162,34 +162,35 @@ func (sl *skipList) Put(key []byte, entity *sortedMapEntity) error {
 }
 
 // Del the kv entry by key
-// func (sl *skipList) Del(key []byte) error {
-// 	if sl.Empty() {
-// 		return nil
-// 	}
+// Del is in-place delete that is not needed in LSM.
+func (sl *skipList) Del(key []byte) error {
+	if sl.Empty() {
+		return nil
+	}
 
-// 	update := make([]*skipListNode, sl.maxLevel)
-// 	x := sl.head
-// 	for i := sl.maxLevel - 1; i >= 0; i-- {
-// 		for x.forwards[i] != nil && sl.less(x.forwards[i].key, key) {
-// 			x = x.forwards[i] // skip
-// 		}
-// 		update[i] = x
-// 	}
+	update := make([]*skipListNode, sl.maxLevel)
+	x := sl.head
+	for i := sl.maxLevel - 1; i >= 0; i-- {
+		for x.forwards[i] != nil && sl.less(x.forwards[i].key, key) {
+			x = x.forwards[i] // skip
+		}
+		update[i] = x
+	}
 
-// 	x = x.forwards[0]
+	x = x.forwards[0]
 
-// 	if x != nil && bytes.Equal(x.key, key) {
-// 		for i := 0; i < sl.maxLevel; i++ {
-// 			if update[i].forwards[i] != x {
-// 				return nil // level of x done
-// 			}
-// 			update[i].forwards[i] = x.forwards[i]
-// 		}
-// 		sl._size--
-// 	}
+	if x != nil && bytes.Equal(x.key, key) {
+		for i := 0; i < sl.maxLevel; i++ {
+			if update[i].forwards[i] != x {
+				return nil // level of x done
+			}
+			update[i].forwards[i] = x.forwards[i]
+		}
+		sl._size--
+	}
 
-// 	return nil
-// }
+	return nil
+}
 
 // Traverse traverses the skipList in order defined by lessFunc
 func (sl *skipList) Traverse(operation func(key []byte, entity *sortedMapEntity)) {

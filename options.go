@@ -50,7 +50,7 @@ func (op CollectionOptions) String() string {
 	b.WriteString(fmt.Sprintf("[initial levels number] %d\n", op.InitialLevelNum))
 	b.WriteString(fmt.Sprintf("[levels size ratio] %d\n", op.LevelSizeRatio))
 	b.WriteString(fmt.Sprintf("[delete persistence threshold] %v\n", op.DeletePersistThreshold))
-	b.WriteString(fmt.Sprintf("[in-memory table capacity limit] %v\n", beautifulNumByte(op.MemTableBytesLimit)))
+	b.WriteString(fmt.Sprintf("[in-memory table capacity limit] %v\n", beautifulNumByte(op.MemTableSizeLimit)))
 
 	return b.String()
 }

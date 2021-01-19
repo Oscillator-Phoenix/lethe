@@ -1,13 +1,13 @@
 package lethe
 
 const (
-	constOpBase uint64 = 0 // 0x0000000000000000
+	opBase uint64 = 0 // 0x0000000000000000
 
-	constPutMask uint64 = 1
-	constDelMask uint64 = 2
+	putMask uint64 = 1
+	delMask uint64 = 2
 
-	constOpPut uint64 = constOpBase | (constPutMask << 56) // 0x0100000000000000
-	constOpDel uint64 = constOpBase | (constDelMask << 56) // 0x0200000000000000, tombstone
+	opPut uint64 = opBase | (putMask << 56) // 0x0100000000000000
+	opDel uint64 = opBase | (delMask << 56) // 0x0200000000000000, tombstone
 )
 
 const (

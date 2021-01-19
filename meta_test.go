@@ -6,7 +6,7 @@ import (
 )
 
 func TestKeyMeta(t *testing.T) {
-	fmt.Printf("constOpBase %0*X\n", 16, constOpBase)
-	fmt.Printf("constOpPut  %0*X\n", 16, constOpPut)
-	fmt.Printf("constOpDel  %0*X\n", 16, constOpDel)
+	fmt.Printf("opBase %0*X\n", 16, opBase)
+	fmt.Printf("opPut  %0*X\n", 16, opPut)
+	fmt.Printf("opDel  %0*X\n", 16, opDel)
 }

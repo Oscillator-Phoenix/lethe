@@ -85,8 +85,8 @@ func (lsm *collection) buildSSTFile(sstFileName string, imt *immutableMemTable) 
 	file.fd = newMemSSTFileDesc(sstFileName) // in-memory
 	file.tiles = []*deleteTile{}
 
-	file.primaryKeyMax = []byte{}
-	file.primaryKeyMin = []byte{}
+	file.SortKeyMax = []byte{}
+	file.SortKeyMin = []byte{}
 	file.deleteKeyMax = []byte{}
 	file.deleteKeyMin = []byte{}
 

@@ -16,8 +16,8 @@ type sstFile struct {
 	tiles []*deleteTile
 
 	// fence pointer
-	primaryKeyMin []byte
-	primaryKeyMax []byte
+	SortKeyMin []byte
+	SortKeyMax []byte
 	deleteKeyMin  []byte
 	deleteKeyMax  []byte
 
@@ -140,18 +140,18 @@ func (lsm *collection) getFromSSTFile(file *sstFile, key []byte) (value []byte, 
 
 	// Note that there are no duplicate keys in SST-File, i.e. all keys in a SST-File are unique.
 
-	less := lsm.options.PrimaryKeyLess
+	less := lsm.options.SortKeyLess
 
-	// sstFile fence pointer check (i.e. primaryKeyMin <= key <= primaryKeyMax)
-	if less(key, file.primaryKeyMin) || less(file.primaryKeyMax, key) {
+	// sstFile fence pointer check (i.e. SortKeyMin <= key <= SortKeyMax)
+	if less(key, file.SortKeyMin) || less(file.SortKeyMax, key) {
 		return nil, false, false
 	}
 
 	// get from a page
 	pageGet := func(p *page) (value []byte, found, deleted bool) {
 
-		// page fence pointer check (i.e. primaryKeyMin <= key <= primaryKeyMax)
-		if less(key, p.primaryKeyMin) || less(p.primaryKeyMax, key) {
+		// page fence pointer check (i.e. SortKeyMin <= key <= SortKeyMax)
+		if less(key, p.SortKeyMin) || less(p.SortKeyMax, key) {
 			return nil, false, false
 		}
 
@@ -164,10 +164,10 @@ func (lsm *collection) getFromSSTFile(file *sstFile, key []byte) (value []byte, 
 		ks, vs, metas := p.load(file.fd)
 
 		// TODO
-		// binary search because entries within every page are sorted on primary key
+		// binary search because entries within every page are sorted on sort key
 		for i := 0; i < len(ks); i++ {
 			if bytes.Equal(ks[i], key) {
-				if metas[i].opType == constOpDel { // If there is a tombstone
+				if metas[i].opType == opDel { // If there is a tombstone
 					return nil, false, true
 				}
 				return vs[i], true, false
@@ -180,12 +180,12 @@ func (lsm *collection) getFromSSTFile(file *sstFile, key []byte) (value []byte, 
 	// get from a delet tile
 	deleteTileGet := func(dt *deleteTile) (value []byte, found, deleted bool) {
 
-		// delet tile fence pointer check (i.e. primaryKeyMin <= key <= primaryKeyMax)
-		if less(key, dt.primaryKeyMin) || less(dt.primaryKeyMax, key) {
+		// delet tile fence pointer check (i.e. SortKeyMin <= key <= SortKeyMax)
+		if less(key, dt.SortKeyMin) || less(dt.SortKeyMax, key) {
 			return nil, false, false
 		}
 
-		// linear search because pages within a delete tile are sorted on delete key but not primary key
+		// linear search because pages within a delete tile are sorted on delete key but not sort key
 		for i := 0; i < len(dt.pages); i++ {
 			value, found, deleted := pageGet(dt.pages[i])
 			if found {
@@ -201,7 +201,7 @@ func (lsm *collection) getFromSSTFile(file *sstFile, key []byte) (value []byte, 
 	}
 
 	// TODO
-	// binary search because delete tiles within a sstfile are sorted on primary key
+	// binary search because delete tiles within a sstfile are sorted on sort key
 	for i := 0; i < len(file.tiles); i++ {
 		value, found, deleted := deleteTileGet(file.tiles[i])
 		if found {

@@ -11,8 +11,9 @@ type sortedMapEntity struct {
 	meta      keyMeta
 }
 
+// A sortedMap is a sorted map mapping key to sortedMapEntity.
 type sortedMap interface {
-	Size() int
+	Num() int
 	Empty() bool
 	Get(key []byte) (entity *sortedMapEntity, ok bool)
 	Put(key []byte, entity *sortedMapEntity) error
@@ -22,9 +23,9 @@ type sortedMap interface {
 type memTable struct {
 	sync.Mutex
 
-	_nBytes int
-	less    func(s, t []byte) bool
-	smm     sortedMap
+	nBytes int
+	less   func(s, t []byte) bool
+	sm     sortedMap
 }
 
 type immutableMemTable struct {
@@ -55,9 +56,9 @@ func (e sortedMapEntity) String() string {
 
 	opTypePrint := func(opType uint64) string {
 		switch e.meta.opType {
-		case constOpPut:
+		case opPut:
 			return "Put"
-		case constOpDel:
+		case opDel:
 			return "Del"
 		default:
 			return "Unknown"
@@ -76,46 +77,54 @@ func (e sortedMapEntity) String() string {
 func newMemTable(less func(s, t []byte) bool) *memTable {
 	mt := &memTable{}
 
-	mt._nBytes = 0
+	mt.nBytes = 0
 	mt.less = less
-	mt.smm = newSkipList(mt.less)
+	mt.sm = newSkipList(mt.less)
 
 	return mt
 }
 
 // ---------------------------------------------------------------------------
 
-// no thread-safe
-func (mt *memTable) immutable() *immutableMemTable {
-	// imt creates a new sync.Mutex
-	imt := &immutableMemTable{}
-	imt._nBytes = mt._nBytes
+// thread-safe
+func (mt *memTable) resetIfNecessary(memTableSizeLimit int) (reset bool, imt *immutableMemTable) {
+
+	// a trick: test and lock
+
+	if mt.nBytes < memTableSizeLimit { // test without locking
+		return false, nil
+	}
+
+	mt.Lock()         // lock
+	defer mt.Unlock() // unlock
+
+	if mt.nBytes < memTableSizeLimit { // test with locking
+		return false, nil
+	}
+
+	// to immutable memTable
+	imt = &immutableMemTable{}
+	// just changes the ownership of sortedMap to the new immutableMemTable
+	imt.nBytes = mt.nBytes
 	imt.less = mt.less
-	imt.smm = mt.smm
-	return imt
-}
+	imt.sm = mt.sm
 
-// no thread safe
-func (mt *memTable) reset() {
-	mt._nBytes = 0
-	mt.smm = newSkipList(mt.less)
-}
+	// reset this memTable
+	mt.nBytes = 0
+	mt.sm = newSkipList(mt.less)
 
-// nBytes return the number of bytes used
-// no thread-safe
-func (mt *memTable) nBytes() int {
-	return mt._nBytes
+	return true, imt
 }
 
 // ---------------------------------------------------------------------------
 
-// Size returns the number of kv entries in the memTable
+// Num returns the number of kv entries in the memTable
 // thread-safe
-func (mt *memTable) Size() int {
+func (mt *memTable) Num() int {
 	mt.Lock()
 	defer mt.Unlock()
 
-	return mt.smm.Size()
+	return mt.sm.Num()
 }
 
 // Empty returns whether the memTable is empty
@@ -124,7 +133,7 @@ func (mt *memTable) Empty() bool {
 	mt.Lock()
 	defer mt.Unlock()
 
-	return mt.smm.Empty()
+	return mt.sm.Empty()
 }
 
 // Get returns the copy of value by key.
@@ -134,7 +143,7 @@ func (mt *memTable) Get(key []byte) (value []byte, found, deleted bool) {
 	mt.Lock()
 	defer mt.Unlock()
 
-	entity, found := mt.smm.Get(key)
+	entity, found := mt.sm.Get(key)
 
 	// key not found
 	if !found {
@@ -142,7 +151,7 @@ func (mt *memTable) Get(key []byte) (value []byte, found, deleted bool) {
 	}
 
 	// found the entity but a tombstone
-	if entity.meta.opType == constOpDel { // tombstone
+	if entity.meta.opType == opDel { // tombstone
 		return nil, false, true
 	}
 
@@ -156,7 +165,7 @@ func (mt *memTable) Put(key, value, deleteKey []byte, meta keyMeta) error {
 	mt.Lock()
 	defer mt.Unlock()
 
-	mt._nBytes += (len(key) + len(value) + len(deleteKey) + constKeyMetaBytesLen)
+	mt.nBytes += (len(key) + len(value) + len(deleteKey) + constKeyMetaBytesLen)
 
 	entity := &sortedMapEntity{
 		value:     value,
@@ -166,7 +175,7 @@ func (mt *memTable) Put(key, value, deleteKey []byte, meta keyMeta) error {
 
 	// log.Printf("memTable Put { key[%s] : %v }\n", string(key), entity)
 
-	return mt.smm.Put(key, entity)
+	return mt.sm.Put(key, entity)
 }
 
 // Traverse traverses the memTable in order defined by lessFunc
@@ -175,5 +184,5 @@ func (mt *memTable) Traverse(operation func(key []byte, entity *sortedMapEntity)
 	mt.Lock()
 	defer mt.Unlock()
 
-	mt.smm.Traverse(operation)
+	mt.sm.Traverse(operation)
 }

@@ -3,8 +3,8 @@ package lethe
 type deleteTile struct {
 	pages []*page
 
-	primaryKeyMin []byte
-	primaryKeyMax []byte
+	SortKeyMin []byte
+	SortKeyMax []byte
 	deleteKeyMin  []byte
 	deleteKeyMax  []byte
 }

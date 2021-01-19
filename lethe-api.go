@@ -12,13 +12,13 @@ var (
 	// ErrKeyNotFound is returned when the key is not found.
 	ErrKeyNotFound = errors.New("key-not-found")
 
-	// ErrPrimaryKeyTooLarge is returned when the length of the primary key exceeds the limit.
-	ErrPrimaryKeyTooLarge = errors.New("primary-key-too-large")
+	// ErrSortKeyTooLarge is returned when the length of the sort key exceeds the limit.
+	ErrSortKeyTooLarge = errors.New("primary-key-too-large")
 
 	// ErrDeleteKeyTooLarge is returned when the length of the delete key exceeds the limit.
 	ErrDeleteKeyTooLarge = errors.New("delete-key-too-large")
 
-	// ErrValueTooLarge is returned when the length of the value exceeds the limit of ???.
+	// ErrValueTooLarge is returned when the length of the value exceeds the limit.
 	ErrValueTooLarge = errors.New("value-too-large")
 
 	// ErrClosed is returned when the collection is already closed.
@@ -31,14 +31,14 @@ var (
 // CollectionOptions allows applications to specify config settings.
 type CollectionOptions struct {
 
-	// PrimaryKeyLess defines the order of primary key
-	PrimaryKeyLess func(s, t []byte) bool
+	// SortKeyLess defines the order of sort key
+	SortKeyLess func(s, t []byte) bool
 
 	// DeleteKeyLess defines the order of delete key
 	DeleteKeyLess func(s, t []byte) bool
 
-	// MemTableBytesLimit the number of bytes of MemTable/Buffer
-	MemTableBytesLimit int
+	// MemTableSizeLimit the number of bytes of MemTable
+	MemTableSizeLimit int
 
 	// LevelSizeRatio is a factor that the capacity of Level_(i) is greater than that of Level_(i−1).
 	LevelSizeRatio int
@@ -47,8 +47,8 @@ type CollectionOptions struct {
 	// Path is the file path of the Collection directory.
 	DirPath string
 
-	// CreateIfMissing create a new Collection if filePath is not existed.
-	CreateDirIfMissing bool
+	// CreateIfMissing creates a new Collection if DirPath specified is not existed.
+	CreateIfMissing bool
 
 	// DeletePersistThreshold, all tombstones are persisted within a delete persistence threshold.
 	// DeletePersistThreshold is denoted by D_th in paper 4.1 .
@@ -73,12 +73,12 @@ type CollectionOptions struct {
 
 // DefaultCollectionOptions are the default configuration options.
 var DefaultCollectionOptions = CollectionOptions{
-	PrimaryKeyLess:         func(s, t []byte) bool { return string(s) < string(t) }, // dictionary order
+	SortKeyLess:            func(s, t []byte) bool { return string(s) < string(t) }, // dictionary order
 	DeleteKeyLess:          func(s, t []byte) bool { return string(s) < string(t) }, // dictionary order
-	MemTableBytesLimit:     4 * 1024 * 1024,                                         // 4MB
+	MemTableSizeLimit:      4 * 1024 * 1024,                                         // 4MB
 	LevelSizeRatio:         10.0,                                                    // practical value
 	DirPath:                "",                                                      //
-	CreateDirIfMissing:     false,                                                   //
+	CreateIfMissing:        false,                                                   //
 	DeletePersistThreshold: 24 * time.Hour,                                          // one day
 	InitialLevelNum:        6,                                                       // practical value
 	PagesPerDeleteTile:     8,                                                       // practical value
@@ -123,7 +123,7 @@ type Collection interface {
 	// Del deletes a key-val entry from the Collection.
 	Del(key []byte, writeOptions *WriteOptions) error
 
-	// RangeDel deletes the range [lowKey, highKey] on the primary key
+	// RangeDel deletes the range [lowKey, highKey] on the sort key
 	RangeDel(lowKey, highKey []byte, writeOptions *WriteOptions) error
 
 	// Options returns the options currently being used.

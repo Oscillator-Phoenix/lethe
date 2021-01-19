@@ -8,9 +8,9 @@ import (
 )
 
 const (
-	constMaxPrimaryKeyBytesLen int = (1 << 20) - 1
-	constMaxDeleteKeyBytesLen  int = (1 << 20) - 1
-	constMaxValueBytesLen      int = (1 << 32) - 1
+	constMaxSortKeyBytesLen   int = (1 << 20) - 1
+	constMaxDeleteKeyBytesLen int = (1 << 20) - 1
+	constMaxValueBytesLen     int = (1 << 32) - 1
 )
 
 // A collection implements the Collection interface.
@@ -60,7 +60,7 @@ func newCollection(options *CollectionOptions) *collection {
 	log.Print(lsm.options)
 
 	// create in-memory table, i.e. `Level 0`
-	lsm.curMemTable = newMemTable(lsm.options.PrimaryKeyLess)
+	lsm.curMemTable = newMemTable(lsm.options.SortKeyLess)
 	log.Println("add new level 0 which is an in-memory table")
 
 	// create L-1 persist levels, i.e. `Level 1` ~ `Level L-1`
@@ -109,8 +109,8 @@ func (lsm *collection) getSeqNum() uint64 {
 // the collection, if the key is not found a nil val is returned.
 func (lsm *collection) Get(key []byte, readOptions *ReadOptions) ([]byte, error) {
 
-	if len(key) > constMaxPrimaryKeyBytesLen {
-		return nil, ErrPrimaryKeyTooLarge
+	if len(key) > constMaxSortKeyBytesLen {
+		return nil, ErrSortKeyTooLarge
 	}
 
 	// lookup on the current memTable
@@ -159,8 +159,8 @@ func (lsm *collection) Get(key []byte, readOptions *ReadOptions) ([]byte, error)
 // Put creates or updates an key-val entry in the Collection.
 func (lsm *collection) Put(key, value, deleteKey []byte, writeOptions *WriteOptions) error {
 
-	if len(key) > constMaxPrimaryKeyBytesLen {
-		return ErrPrimaryKeyTooLarge
+	if len(key) > constMaxSortKeyBytesLen {
+		return ErrSortKeyTooLarge
 	}
 	if len(deleteKey) > constMaxDeleteKeyBytesLen {
 		return ErrDeleteKeyTooLarge
@@ -169,10 +169,9 @@ func (lsm *collection) Put(key, value, deleteKey []byte, writeOptions *WriteOpti
 		return ErrValueTooLarge
 	}
 
-	// TODO: add lock to prevent from Put while changing curMemTable
 	meta := keyMeta{
 		seqNum: lsm.getSeqNum(), // atomic
-		opType: constOpPut,      // Put
+		opType: opPut,      // Put
 	}
 
 	// put KV into memTable
@@ -186,39 +185,28 @@ func (lsm *collection) Put(key, value, deleteKey []byte, writeOptions *WriteOpti
 }
 
 func (lsm *collection) resetCurMemTableIfNecessary() {
-	// if the capcity of memTable meets limit, then trigger a persist
 
-	// test and lock
-	if lsm.curMemTable.nBytes() > lsm.options.MemTableBytesLimit {
+	// if the size of memTable meets the limit, then trigger a persist
 
-		lsm.curMemTable.Lock() // lock
+	if reset, imt := lsm.curMemTable.resetIfNecessary(lsm.options.MemTableSizeLimit); reset {
+		// add immutable memTable to queue
+		lsm.immutableQ.push(imt)
 
-		if lsm.curMemTable.nBytes() > lsm.options.MemTableBytesLimit {
-
-			imt := lsm.curMemTable.immutable() // to immutable
-
-			// one immutable triggers one persist task
-			lsm.immutableQ.push(imt)
-			lsm.persistTrigger <- persistTask{}
-
-			lsm.curMemTable.reset() // reset
-		}
-
-		lsm.curMemTable.Unlock() // unlock
+		// one immutable triggers one persist task
+		lsm.persistTrigger <- persistTask{}
 	}
 }
 
 // Del deletes a key-val entry from the Collection.
 func (lsm *collection) Del(key []byte, writeOptions *WriteOptions) error {
 
-	if len(key) > constMaxPrimaryKeyBytesLen {
-		return ErrPrimaryKeyTooLarge
+	if len(key) > constMaxSortKeyBytesLen {
+		return ErrSortKeyTooLarge
 	}
 
-	// TODO: add lock to prevent from Put while changing curMemTable
 	meta := keyMeta{
 		seqNum: lsm.getSeqNum(), // atomic
-		opType: constOpDel,      // Del, tombstone
+		opType: opDel,      // Del, tombstone
 	}
 
 	// put tombstone into memTable
