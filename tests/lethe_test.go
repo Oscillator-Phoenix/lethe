@@ -5,6 +5,7 @@ import (
 	"lethe"
 	"log"
 	"testing"
+	"time"
 )
 
 func init() {
@@ -12,13 +13,21 @@ func init() {
 }
 
 func TestGetPutDelSerial(t *testing.T) {
-	c, err := lethe.NewCollection(lethe.DefaultCollectionOptions)
+
+	copts := lethe.DefaultCollectionOptions
+	copts.MemTableSizeLimit = 4 << 20
+	// copts.MemTableSizeLimit = 1 * 1024
+	// copts.MemTableSizeLimit = 32
+
+	c, err := lethe.NewCollection(copts)
 	if err != nil {
 		t.Fatal("NewCollection\n")
 	}
 	defer c.Close()
 
 	batchSize := 2 * 1000 * 1000
+	// batchSize := 1000
+	// batchSize := 10
 
 	fmt.Println("genBatchKVA...")
 	ks, vs, as := genBatchKVA(batchSize)
@@ -31,17 +40,14 @@ func TestGetPutDelSerial(t *testing.T) {
 	fmt.Println("Get before Put ...")
 	for i := 0; i < batchSize; i++ {
 		v, err := c.Get(ks[i], ropts)
-		if v != nil {
+		if v != nil && err != lethe.ErrKeyNotFound {
 			t.Fatalf("Get\n")
-		}
-		if err != lethe.ErrKeyNotFound {
-			t.Fatal("Get\n")
 		}
 	}
 	fmt.Println("Get before Put done")
 
 	// Put
-	fmt.Println("Put ...")
+	fmt.Println("Put...")
 	for i := 0; i < batchSize; i++ {
 		if err = c.Put(ks[i], vs[i], []byte("..."), wopts); err != nil {
 			t.Fatal("Put\n")
@@ -49,6 +55,9 @@ func TestGetPutDelSerial(t *testing.T) {
 		// t.Logf("Put [%s] [%s]\n", string(ks[i]), string(vs[i]))
 	}
 	fmt.Println("Put done")
+
+	fmt.Printf("\nWaiting...\n\n")
+	time.Sleep(1 * time.Second)
 
 	// Get After Put
 	fmt.Println("Get After Put ...")
@@ -84,18 +93,14 @@ func TestGetPutDelSerial(t *testing.T) {
 	fmt.Println("Get After Del ...")
 	for i := 0; i < batchSize; i++ {
 		v, err := c.Get(ks[i], ropts)
-		if v != nil {
+		if v != nil && err != lethe.ErrKeyNotFound {
 			t.Logf("%v\n", v)
-			t.Fatalf("Get: expected nil\n")
-		}
-		if err != lethe.ErrKeyNotFound {
-			t.Fatalf("Get: expected %v\n", lethe.ErrKeyNotFound)
+			t.Fatalf("Get: expected nil and %v\n", lethe.ErrKeyNotFound)
 		}
 	}
 	fmt.Println("Get After Del done")
-
 }
 
-func TestGetPutDelParallel(t *testing.T) {
+func TestGetPutDelConcurrent(t *testing.T) {
 	// TODO
 }

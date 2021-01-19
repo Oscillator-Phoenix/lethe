@@ -80,20 +80,22 @@ func (lsm *collection) persistDaemon(ctx context.Context) {
 func (lsm *collection) buildSSTFile(sstFileName string, imt *immutableMemTable) *sstFile {
 	file := &sstFile{}
 
-	file.fd = newMemSSTFileDesc(sstFileName) // in-memory
-	file.tiles = []*deleteTile{}
+	// file.fd = newMemSSTFileDesc(sstFileName) // in-memory
+	// file.tiles = []*deleteTile{}
 
-	file.SortKeyMax = []byte{}
-	file.SortKeyMin = []byte{}
-	file.deleteKeyMax = []byte{}
-	file.deleteKeyMin = []byte{}
+	// file.SortKeyMax = []byte{}
+	// file.SortKeyMin = []byte{}
+	// file.deleteKeyMax = []byte{}
+	// file.deleteKeyMin = []byte{}
 
-	file.aMax = 0
-	file.b = 0
+	// file.aMax = 0
+	// file.b = 0
 
-	imt.Traverse(func(key []byte, entity *sortedMapEntity) {
-		// TODO
-	})
+	// imt.Traverse(func(key []byte, entity *sortedMapEntity) {
+	// 	// TODO
+	// })
+
+	log.Printf("[persist daemon] building SST-file %s\n", sstFileName)
 
 	return file
 }

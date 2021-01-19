@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	constMaxSortKeyBytesLen   int = (1 << 20) - 1
-	constMaxDeleteKeyBytesLen int = (1 << 20) - 1
+	constMaxSortKeyBytesLen   int = (1 << 16) - 1
+	constMaxDeleteKeyBytesLen int = (1 << 16) - 1
 	constMaxValueBytesLen     int = (1 << 32) - 1
 )
 
@@ -113,8 +113,6 @@ func (lsm *collection) Get(key []byte, readOptions *ReadOptions) ([]byte, error)
 		return nil, ErrSortKeyTooLarge
 	}
 
-	// lookup on the current memTable
-
 	var (
 		found bool
 		value []byte
@@ -148,6 +146,8 @@ func (lsm *collection) Get(key []byte, readOptions *ReadOptions) ([]byte, error)
 		// index i : less(newer) <===> greater(older)
 		for i := 0; i < len(lsm.levels); i++ {
 
+			// log.Printf("getFromLevel %d\n", i+1)
+
 			if found, value, meta = lsm.getFromLevel(lsm.levels[i], key); found {
 
 				// found the entity but a tombstone
@@ -157,8 +157,9 @@ func (lsm *collection) Get(key []byte, readOptions *ReadOptions) ([]byte, error)
 
 				return value, nil
 			}
-		}
 
+			// keep searching in next older level
+		}
 	}
 
 	// key is not found

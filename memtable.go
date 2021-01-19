@@ -2,6 +2,7 @@ package lethe
 
 import (
 	"fmt"
+	"log"
 	"sync"
 )
 
@@ -113,6 +114,8 @@ func (mt *memTable) resetIfNecessary(memTableSizeLimit int) (reset bool, imt *im
 	// reset this memTable
 	mt.nBytes = 0
 	mt.sm = newSkipList(mt.less)
+
+	log.Printf("reset current memTable [%d] -> [%d]\n", imt.nBytes, mt.nBytes)
 
 	return true, imt
 }
