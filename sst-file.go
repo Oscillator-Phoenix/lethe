@@ -16,10 +16,10 @@ type sstFile struct {
 	tiles []*deleteTile
 
 	// fence pointer
-	SortKeyMin []byte
-	SortKeyMax []byte
-	deleteKeyMin  []byte
-	deleteKeyMax  []byte
+	SortKeyMin   []byte
+	SortKeyMax   []byte
+	deleteKeyMin []byte
+	deleteKeyMax []byte
 
 	// metadata
 	aMax uint64
@@ -136,28 +136,28 @@ func (fd *diskSSTFileDesc) Close() error {
 
 // -----------------------------------------------------------------------------
 
-func (lsm *collection) getFromSSTFile(file *sstFile, key []byte) (value []byte, found, deleted bool) {
+func (lsm *collection) getFromSSTFile(file *sstFile, key []byte) (found bool, value []byte, meta keyMeta) {
 
-	// Note that there are no duplicate keys in SST-File, i.e. all keys in a SST-File are unique.
+	// Note that there are no duplicate keys in a SST-File, i.e. all keys in a SST-File are unique.
 
 	less := lsm.options.SortKeyLess
 
 	// sstFile fence pointer check (i.e. SortKeyMin <= key <= SortKeyMax)
 	if less(key, file.SortKeyMin) || less(file.SortKeyMax, key) {
-		return nil, false, false
+		return false, nil, meta
 	}
 
 	// get from a page
-	pageGet := func(p *page) (value []byte, found, deleted bool) {
+	pageGet := func(p *page) (found bool, value []byte, meta keyMeta) {
 
 		// page fence pointer check (i.e. SortKeyMin <= key <= SortKeyMax)
 		if less(key, p.SortKeyMin) || less(p.SortKeyMax, key) {
-			return nil, false, false
+			return false, nil, meta
 		}
 
-		// page-granularity bloom filter existence check
+		// check key existence via page-granularity bloom filter
 		if p.bloomFilterExists(key) == false {
-			return nil, false, false
+			return false, nil, meta
 		}
 
 		// load data form disk...
@@ -167,51 +167,47 @@ func (lsm *collection) getFromSSTFile(file *sstFile, key []byte) (value []byte, 
 		// binary search because entries within every page are sorted on sort key
 		for i := 0; i < len(ks); i++ {
 			if bytes.Equal(ks[i], key) {
-				if metas[i].opType == opDel { // If there is a tombstone
-					return nil, false, true
-				}
-				return vs[i], true, false
+				return true, vs[i], metas[i]
 			}
 		}
 
-		return nil, false, false
+		// key is not found in this page
+		return false, nil, meta
 	}
 
-	// get from a delet tile
-	deleteTileGet := func(dt *deleteTile) (value []byte, found, deleted bool) {
+	// get from a delete-tile
+	tileGet := func(dt *deleteTile) (found bool, value []byte, meta keyMeta) {
 
 		// delet tile fence pointer check (i.e. SortKeyMin <= key <= SortKeyMax)
 		if less(key, dt.SortKeyMin) || less(dt.SortKeyMax, key) {
-			return nil, false, false
+			return false, nil, meta
 		}
 
 		// linear search because pages within a delete tile are sorted on delete key but not sort key
 		for i := 0; i < len(dt.pages); i++ {
-			value, found, deleted := pageGet(dt.pages[i])
-			if found {
-				return value, true, false
+
+			if found, value, meta = pageGet(dt.pages[i]); found {
+				return true, value, meta
 			}
-			if deleted {
-				return nil, false, true
-			}
+
 			// If key is not found and not deleted, keep searching in next pages
 		}
 
-		return nil, false, false
+		// key is not found in this delete-tile
+		return false, nil, meta
 	}
 
 	// TODO
 	// binary search because delete tiles within a sstfile are sorted on sort key
 	for i := 0; i < len(file.tiles); i++ {
-		value, found, deleted := deleteTileGet(file.tiles[i])
-		if found {
-			return value, true, false
+
+		if found, value, meta = tileGet(file.tiles[i]); found {
+			return true, value, meta
 		}
-		if deleted {
-			return nil, false, true
-		}
+
 		// If key is not found and not deleted, keep searching in next delete-tiles
 	}
 
-	return nil, false, false
+	// key is not found in this SST-file
+	return false, nil, meta
 }

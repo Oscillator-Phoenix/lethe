@@ -114,45 +114,54 @@ func (lsm *collection) Get(key []byte, readOptions *ReadOptions) ([]byte, error)
 	}
 
 	// lookup on the current memTable
-	{
-		value, found, deleted := lsm.curMemTable.Get(key)
-		if found {
-			return value, nil
-		}
-		if deleted {
+
+	var (
+		found bool
+		value []byte
+		meta  keyMeta
+	)
+
+	// look up on current memTable
+	if found, value, meta = lsm.curMemTable.Get(key); found {
+
+		// found the entity but a tombstone
+		if meta.opType == opDel {
 			return nil, ErrKeyNotFound
 		}
+
+		return value, nil
 	}
 
-	// look up on immutable memTables
-	{
-		value, found, deleted := lsm.immutableQ.Get(key)
-		if found {
-			return value, nil
-		}
-		if deleted {
+	// look up on immutable memTable queue
+	if found, value, meta = lsm.immutableQ.Get(key); found {
+
+		// found the entity but a tombstone
+		if meta.opType == opDel {
 			return nil, ErrKeyNotFound
 		}
+
+		return value, nil
 	}
 
 	// loop up on persisted levels
 	{
 		// index i : less(newer) <===> greater(older)
-		// for i := 0; i < len(lsm.levels); i++ {
+		for i := 0; i < len(lsm.levels); i++ {
 
-		// 	value, err := lsm.getFromLevel(lsm.levels[i], key)
+			if found, value, meta = lsm.getFromLevel(lsm.levels[i], key); found {
 
-		// 	if err != nil {
-		// 		log.Printf("[internal error] %v\n", err)
-		// 		return nil, ErrPlaceholder
-		// 	}
+				// found the entity but a tombstone
+				if meta.opType == opDel {
+					return nil, ErrKeyNotFound
+				}
 
-		// 	if value != nil {
-		// 		break
-		// 	}
-		// }
+				return value, nil
+			}
+		}
+
 	}
 
+	// key is not found
 	return nil, ErrKeyNotFound
 }
 
@@ -171,7 +180,7 @@ func (lsm *collection) Put(key, value, deleteKey []byte, writeOptions *WriteOpti
 
 	meta := keyMeta{
 		seqNum: lsm.getSeqNum(), // atomic
-		opType: opPut,      // Put
+		opType: opPut,           // Put
 	}
 
 	// put KV into memTable
@@ -206,7 +215,7 @@ func (lsm *collection) Del(key []byte, writeOptions *WriteOptions) error {
 
 	meta := keyMeta{
 		seqNum: lsm.getSeqNum(), // atomic
-		opType: opDel,      // Del, tombstone
+		opType: opDel,           // Del, tombstone
 	}
 
 	// put tombstone into memTable

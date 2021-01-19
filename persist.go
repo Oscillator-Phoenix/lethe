@@ -41,23 +41,21 @@ func (iq *immutableQueue) size() int {
 	return len(iq.imts)
 }
 
-func (iq *immutableQueue) Get(key []byte) (value []byte, found, deleted bool) {
+func (iq *immutableQueue) Get(key []byte) (found bool, value []byte, meta keyMeta) {
 	iq.Lock()
 	defer iq.Unlock()
 
 	// index i : greater(newer) <===> less(older)
 	for i := len(iq.imts) - 1; i >= 0; i-- {
-		value, found, deleted := iq.imts[i].Get(key)
-		if found {
-			return value, true, false
+
+		if found, value, meta = iq.imts[i].Get(key); found {
+			return true, value, meta
 		}
-		if deleted {
-			return nil, false, true
-		}
-		// if not found and not deleted, keep searching in older immutable memTables.
+
+		// if key is not found, keep searching in older immutable memTables.
 	}
 
-	return nil, false, false
+	return false, nil, meta
 }
 
 func (lsm *collection) persistDaemon(ctx context.Context) {

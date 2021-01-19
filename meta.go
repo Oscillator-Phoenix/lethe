@@ -16,7 +16,7 @@ const (
 
 type keyMeta struct {
 	seqNum uint64 // sequence number of operation
-	opType uint64 // opType only uses the highest 8 bits
+	opType uint64 // now, opType only uses the highest 8 bits
 }
 
 type sstFileMeta struct {

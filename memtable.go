@@ -102,9 +102,10 @@ func (mt *memTable) resetIfNecessary(memTableSizeLimit int) (reset bool, imt *im
 		return false, nil
 	}
 
-	// to immutable memTable
+	// immute
 	imt = &immutableMemTable{}
-	// just changes the ownership of sortedMap to the new immutableMemTable
+
+	// just give the ownership of sortedMap to the new immutableMemTable
 	imt.nBytes = mt.nBytes
 	imt.less = mt.less
 	imt.sm = mt.sm
@@ -137,26 +138,21 @@ func (mt *memTable) Empty() bool {
 }
 
 // Get returns the copy of value by key.
-// If the key is not found, it returns (nil, false).
+// If the key is not found, it returns (false, nil, meta).
 // thread-safe
-func (mt *memTable) Get(key []byte) (value []byte, found, deleted bool) {
+func (mt *memTable) Get(key []byte) (found bool, value []byte, meta keyMeta) {
 	mt.Lock()
 	defer mt.Unlock()
 
 	entity, found := mt.sm.Get(key)
 
-	// key not found
+	// key is not found
 	if !found {
-		return nil, false, false
-	}
-
-	// found the entity but a tombstone
-	if entity.meta.opType == opDel { // tombstone
-		return nil, false, true
+		return false, nil, meta
 	}
 
 	// found the valid entity
-	return copyBytes(entity.value), true, false
+	return true, copyBytes(entity.value), entity.meta
 }
 
 // Put inserts a kv entry into memTable.

@@ -164,7 +164,7 @@ func (lsm *collection) findOverlapFiles(lv *level, target *sstFile) []*sstFile {
 // -----------------------------------------------------------------------------
 
 // getFromLevel gets value by key from a level
-func (lsm *collection) getFromLevel(lv *level, key []byte) (value []byte, found, deleted bool) {
+func (lsm *collection) getFromLevel(lv *level, key []byte) (found bool, value []byte, meta keyMeta) {
 	// Level lock
 	lv.Lock()
 	defer lv.Unlock()
@@ -173,15 +173,13 @@ func (lsm *collection) getFromLevel(lv *level, key []byte) (value []byte, found,
 	// index i : greater(newer file) ==> less(older file)
 	// if key is not found in newer file, search in older file.
 	for i := len(lv.files) - 1; i >= 0; i-- {
-		value, found, deleted := lsm.getFromSSTFile(lv.files[i], key)
-		if found {
-			return value, true, false
+
+		if found, value, meta = lsm.getFromSSTFile(lv.files[i], key); found {
+			return true, value, meta
 		}
-		if deleted {
-			return nil, false, true
-		}
-		// If key is not found and not deleted, keep searching in next sstFile
+
+		// If key is not found, keep searching in next sstFile
 	}
 
-	return nil, false, false
+	return false, nil, meta
 }
