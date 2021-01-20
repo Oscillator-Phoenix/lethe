@@ -11,13 +11,12 @@ const (
 
 // As the paper 4.2.3 says, lethe maintains Bloom Filters on primay key at the granularity of page.
 type page struct {
+
+	// meta
+	pageMeta
+
 	bloom  *bloomfilter.BloomFilter
 	offset int64
-
-	SortKeyMin []byte
-	SortKeyMax []byte
-	deleteKeyMin  []byte
-	deleteKeyMax  []byte
 }
 
 func (p *page) buildBloomFilter() error {

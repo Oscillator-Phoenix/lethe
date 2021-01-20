@@ -164,7 +164,7 @@ func (mt *memTable) Put(key, value, deleteKey []byte, meta keyMeta) error {
 	mt.Lock()
 	defer mt.Unlock()
 
-	mt.nBytes += (len(key) + len(value) + len(deleteKey) + constKeyMetaLen)
+	mt.nBytes += entryPersistFormatLen(key, value, deleteKey)
 
 	entity := &sortedMapEntity{
 		value:     value,

@@ -5,6 +5,7 @@ import (
 	"log"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // A collection implements the Collection interface.
@@ -21,6 +22,7 @@ type collection struct {
 
 	// increater sequentce number of operation on collection
 	seqNumInc uint64
+	timeStamp uint64
 
 	// in-memory table
 	curMemTable      *memTable // `Level 0`
@@ -29,19 +31,18 @@ type collection struct {
 	// persisted levels
 	levels []*level // `Level 1` ~ `Level L-1`
 
+	// cancel func of all daemon goroutine, init in Start() and then used in Close()
+	daemonCancel context.CancelFunc
+
 	// persistence
 	// immutable memTable queue
 	immutableQ *immutableQueue
 	// persist trigger
 	persistTrigger chan persistTask
-	// cancel func of persistence, init in Start() and then used in Close()
-	persistCancel context.CancelFunc
 
 	// compaction
 	// compaction trigger
 	compactTrigger chan compactTask
-	// cancel func of compaction, init in Start() and then used in Close()
-	compactCancel context.CancelFunc
 }
 
 func newCollection(options *CollectionOptions) *collection {
@@ -63,18 +64,22 @@ func newCollection(options *CollectionOptions) *collection {
 		lsm.addNewLevel()
 	}
 
-	// persist
+	daemonCtx, daemonCancel := context.WithCancel(context.Background())
+	lsm.daemonCancel = daemonCancel
+
+	// persist daemon
 	lsm.immutableQ = newImmutableQueue()
 	lsm.persistTrigger = make(chan persistTask, lsm.options.persistTriggerBufLen)
-	persistCtx, persistCancel := context.WithCancel(context.Background())
-	lsm.persistCancel = persistCancel
-	go lsm.persistDaemon(persistCtx)
+	go lsm.persistDaemon(daemonCtx)
 
-	// compact
+	// compact daemon
 	lsm.compactTrigger = make(chan compactTask, lsm.options.compactTriggerBufLen)
-	compactCtx, compactCancel := context.WithCancel(context.Background())
-	lsm.compactCancel = compactCancel
-	go lsm.compactDaemon(compactCtx)
+	go lsm.compactDaemon(daemonCtx)
+
+	// time stamp update daemon
+	atomic.StoreUint64(&lsm.timeStamp, uint64(time.Now().Unix())) // seconds
+	atomic.StoreUint64(&lsm.seqNumInc, 0)
+	go lsm.timeStampUpdateDaemon(daemonCtx)
 
 	return lsm
 }
@@ -83,20 +88,43 @@ func newCollection(options *CollectionOptions) *collection {
 func (lsm *collection) Close() error {
 	log.Println("collection is closing ...")
 
-	// stop lsm.persistDaemon()
-	lsm.persistCancel()
-
-	// stop lsm.compactDaemon()
-	lsm.compactCancel()
+	// stop all daemon goroutine
+	lsm.daemonCancel()
 
 	log.Println("collection is closed")
+
+	time.Sleep(time.Second * 1)
 
 	return nil
 }
 
-// getSeqNum atomically increates `lsm.seqNumInc` and returns the new value
+// time stamp update daemon
+func (lsm *collection) timeStampUpdateDaemon(ctx context.Context) {
+
+	ticker := time.NewTicker(1 * time.Minute) // 1 minutes ticker
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			{
+				atomic.StoreUint64(&lsm.timeStamp, uint64(time.Now().Unix()))
+				atomic.StoreUint64(&lsm.seqNumInc, 0) // reset seqNumInc
+			}
+		case <-ctx.Done():
+			{
+				log.Println("stop [time stamp update daemon]")
+				return
+			}
+		}
+	}
+}
+
+// getSeqNum atomically increates `lsm.seqNumInc` and returns the new value.
+// Unix-like operating systems often record time as a 32-bit count of seconds.
+// Here, lsm.timeStamp is valid for one hundred years until 2100 A.D., then it will overflow.
 func (lsm *collection) getSeqNum() uint64 {
-	return atomic.AddUint64(&lsm.seqNumInc, 1)
+	return ((atomic.LoadUint64(&lsm.timeStamp) << 32) | atomic.AddUint64(&lsm.seqNumInc, 1))
 }
 
 // Get retrieves a value by iterating over all the segments within

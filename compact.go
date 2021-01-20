@@ -33,7 +33,7 @@ func (lsm *collection) compactDaemon(ctx context.Context) {
 			}
 		case <-ctx.Done():
 			{
-				log.Println("stop compaction daemon")
+				log.Println("stop [compaction daemon]")
 				return
 			}
 		}

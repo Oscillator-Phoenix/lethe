@@ -8,23 +8,17 @@ import (
 	"path"
 )
 
+// sstFile is the in-memory format of SST-file.
 type sstFile struct {
+
+	// meta
+	sstFileMeta
+
 	// file reader
 	fd sstFileDesc
 
 	// delete tiles
 	tiles []*deleteTile
-
-	// fence pointer
-	SortKeyMin   []byte
-	SortKeyMax   []byte
-	deleteKeyMin []byte
-	deleteKeyMax []byte
-
-	// metadata
-	ageOldestTomb uint64 // the age of oldest tomb in file
-	numEntry      uint64 // the number of entries in file
-	numDelete     uint64 // the number of point delete in file
 }
 
 // -----------------------------------------------------------------------------

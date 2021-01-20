@@ -65,7 +65,7 @@ func (lsm *collection) persistDaemon(ctx context.Context) {
 			}
 		case <-ctx.Done():
 			{
-				log.Println("stop persist daemon")
+				log.Println("stop [persist daemon]")
 				return
 			}
 		}
@@ -74,27 +74,20 @@ func (lsm *collection) persistDaemon(ctx context.Context) {
 
 // buildSSTFile builds a sstFile from the immutableMemTable
 // sstFileName is the UNIQUE identifier of the sstFile
-func (lsm *collection) buildSSTFile(sstFileName string, imt *immutableMemTable) *sstFile {
-	file := &sstFile{}
+func (lsm *collection) buildSSTFile(sstFileName string, imt *immutableMemTable) (*sstFile, error) {
 
-	file.fd = newMemSSTFileDesc(sstFileName) // in-memory mock
+	log.Printf("[persist] building SST-file[%s]\n", sstFileName)
 
-	file.tiles = []*deleteTile{}
-
-	file.SortKeyMax = []byte{}
-	file.SortKeyMin = []byte{}
-	file.deleteKeyMax = []byte{}
-	file.deleteKeyMin = []byte{}
-
-	file.ageOldestTomb = 0
-	file.numDelete = 0
+	// sLess := lsm.options.SortKeyLess
+	dLess := lsm.options.DeleteKeyLess
 
 	numEntry := imt.Num()
-	ks := make([][]byte, numEntry)
-	vs := make([][]byte, numEntry)
-	ds := make([][]byte, numEntry)
-	metas := make([]keyMeta, numEntry)
+	ks := make([][]byte, 0, numEntry)
+	vs := make([][]byte, 0, numEntry)
+	ds := make([][]byte, 0, numEntry)
+	metas := make([]keyMeta, 0, numEntry)
 
+	// take out data from immutable memTable
 	imt.Traverse(func(key []byte, entity *sortedMapEntity) {
 		ks = append(ks, key)
 		vs = append(vs, entity.value)
@@ -102,9 +95,50 @@ func (lsm *collection) buildSSTFile(sstFileName string, imt *immutableMemTable) 
 		metas = append(metas, entity.meta)
 	})
 
-	log.Printf("[persist] building SST-file[%s]\n", sstFileName)
+	var (
+		deleteKeyMin  []byte = ds[0] // init value
+		deleteKeyMax  []byte = ds[0] // init value
+		numDelete     int    = 0     // init value
+		ageOldestTomb uint32 = 0     // intt value
+	)
 
-	return file
+	for i := 0; i < numEntry; i++ {
+		if dLess(ds[i], deleteKeyMin) {
+			deleteKeyMin = ds[i]
+		}
+		if dLess(deleteKeyMax, ds[i]) {
+			deleteKeyMax = ds[i]
+		}
+		if metas[i].opType == opDel {
+			numDelete++
+
+			// parse age of entry from seqNum
+			age := uint32((metas[i].seqNum >> 32) & 0xFFFFFFFF)
+			if ageOldestTomb < age {
+				ageOldestTomb = age
+			}
+		}
+	}
+
+	file := &sstFile{}
+
+	// meta
+	file.SortKeyMin = ks[0]
+	file.SortKeyMax = ks[numEntry-1]
+	file.DeleteKeyMin = deleteKeyMin
+	file.DeleteKeyMax = deleteKeyMax
+	file.AgeOldestTomb = ageOldestTomb
+	file.NumDelete = numDelete
+	file.NumEntry = numEntry
+
+	file.fd = newMemSSTFileDesc(sstFileName) // init, in-memory mock
+	file.tiles = []*deleteTile{}             // init
+
+	// TODO
+	// lsm.bulidPages(ks, vs, ds, metas)
+	// lsm.buildDeleteTile()
+
+	return file, nil
 }
 
 func (lsm *collection) persistOne() error {
@@ -118,7 +152,7 @@ func (lsm *collection) persistOne() error {
 	imt := lsm.immutableQ.imts[0]
 
 	sstFileName := fmt.Sprintf("%s", uuid.New())
-	sstFile := lsm.buildSSTFile(sstFileName, imt) // time cost heavily
+	sstFile, _ := lsm.buildSSTFile(sstFileName, imt) // time cost heavily
 
 	// add the new sstFile to the top peristed level
 	lsm.addSSTFileOnLevel(lsm.levels[0], sstFile)
