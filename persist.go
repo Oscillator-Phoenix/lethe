@@ -63,7 +63,7 @@ func (lsm *collection) persistDaemon(ctx context.Context) {
 		select {
 		case task := <-lsm.persistTrigger:
 			{
-				log.Printf("[persist daemon] persist trigger task [%v], immutableQueue size [%d]\n", task, lsm.immutableQ.size())
+				log.Printf("[persist] trigger task [%v], immutableQueue size [%d]\n", task, lsm.immutableQ.size())
 				lsm.persistOne()
 			}
 		case <-ctx.Done():
@@ -95,7 +95,7 @@ func (lsm *collection) buildSSTFile(sstFileName string, imt *immutableMemTable) 
 	// 	// TODO
 	// })
 
-	log.Printf("[persist daemon] building SST-file %s\n", sstFileName)
+	log.Printf("[persist] building SST-file [%s]\n", sstFileName)
 
 	return file
 }

@@ -5,7 +5,6 @@ import (
 	"lethe"
 	"log"
 	"testing"
-	"time"
 )
 
 func init() {
@@ -15,7 +14,7 @@ func init() {
 func TestGetPutDelSerial(t *testing.T) {
 
 	copts := lethe.DefaultCollectionOptions
-	copts.MemTableSizeLimit = 4 << 20
+	copts.MemTableSizeLimit = 8 << 20
 	// copts.MemTableSizeLimit = 1 * 1024
 	// copts.MemTableSizeLimit = 32
 
@@ -25,7 +24,7 @@ func TestGetPutDelSerial(t *testing.T) {
 	}
 	defer c.Close()
 
-	batchSize := 2 * 1000 * 1000
+	batchSize := 1 * 1000 * 1000
 	// batchSize := 1000
 	// batchSize := 10
 
@@ -56,8 +55,8 @@ func TestGetPutDelSerial(t *testing.T) {
 	}
 	fmt.Println("Put done")
 
-	fmt.Printf("\nWaiting...\n\n")
-	time.Sleep(1 * time.Second)
+	// fmt.Printf("\nWaiting...\n\n")
+	// time.Sleep(1 * time.Second)
 
 	// Get After Put
 	fmt.Println("Get After Put ...")
