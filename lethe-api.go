@@ -54,13 +54,16 @@ type CollectionOptions struct {
 	// DeletePersistThreshold is denoted by D_th in paper 4.1 .
 	DeletePersistThreshold time.Duration
 
-	// InitialLevelNum is the initial number of level.
+	// NumInitialLevel is the number of initial level.
 	// A LSM with L levels has one memTable(`Level 0`) and L-1 perist levels(`Level 1` to `Level L-1` ).
-	InitialLevelNum int
+	NumInitialLevel int
 
-	// PagesPerDeleteTile is the number of pages per delete tile,
+	// StandatdPageSize is a standard size of page
+	StandatdPageSize int
+
+	// NumPagePerDeleteTile is the number of pages per delete-tile,
 	// An import tuning knob of LSM tree.
-	PagesPerDeleteTile int
+	NumPagePerDeleteTile int
 
 	// ----------------------------------------------------------------------------
 
@@ -80,8 +83,9 @@ var DefaultCollectionOptions = CollectionOptions{
 	DirPath:                "",                                                      //
 	CreateIfMissing:        false,                                                   //
 	DeletePersistThreshold: 24 * time.Hour,                                          // one day
-	InitialLevelNum:        6,                                                       // practical value
-	PagesPerDeleteTile:     8,                                                       // practical value
+	NumInitialLevel:        6,                                                       // practical value
+	StandatdPageSize:       4 * 1024,                                                // 4KB
+	NumPagePerDeleteTile:   8,                                                       // practical value
 
 	// -------------------------------------------
 

@@ -8,7 +8,9 @@ import (
 )
 
 func init() {
-	log.SetFlags(log.Ldate | log.Lmicroseconds | log.Llongfile)
+	// log.SetFlags(log.Ldate | log.Lmicroseconds | log.Llongfile)
+	log.SetFlags(log.Lmicroseconds | log.Llongfile)
+
 }
 
 func TestGetPutDelSerial(t *testing.T) {

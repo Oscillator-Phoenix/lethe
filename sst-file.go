@@ -22,8 +22,9 @@ type sstFile struct {
 	deleteKeyMax []byte
 
 	// metadata
-	aMax uint64
-	b    int
+	ageOldestTomb uint64 // the age of oldest tomb in file
+	numEntry      uint64 // the number of entries in file
+	numDelete     uint64 // the number of point delete in file
 }
 
 // -----------------------------------------------------------------------------
@@ -183,7 +184,7 @@ func (lsm *collection) getFromSSTFile(file *sstFile, key []byte) (found bool, va
 			return false, nil, meta
 		}
 
-		// linear search because pages within a delete tile are sorted on delete key but not sort key
+		// linear search because pages within a delete-tile are sorted on delete key but not sort key
 		for i := 0; i < len(dt.pages); i++ {
 
 			if found, value, meta = pageGet(dt.pages[i]); found {

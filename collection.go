@@ -65,7 +65,7 @@ func newCollection(options *CollectionOptions) *collection {
 
 	// create L-1 persist levels, i.e. `Level 1` ~ `Level L-1`
 	lsm.levels = []*level{}
-	for i := 0; i < lsm.options.InitialLevelNum-1; i++ {
+	for i := 0; i < lsm.options.NumInitialLevel-1; i++ {
 		lsm.addNewLevel()
 	}
 

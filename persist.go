@@ -2,8 +2,12 @@ package lethe
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"runtime"
 	"sync"
+
+	"github.com/google/uuid"
 )
 
 type persistTask struct{}
@@ -24,13 +28,6 @@ func (iq *immutableQueue) push(imt *immutableMemTable) {
 	defer iq.Unlock()
 
 	iq.imts = append(iq.imts, imt)
-}
-
-func (iq *immutableQueue) front() *immutableMemTable {
-	iq.Lock()
-	defer iq.Unlock()
-
-	return iq.imts[0]
 }
 
 // size returns the number of immutable memTables in immutableQueue
@@ -80,46 +77,58 @@ func (lsm *collection) persistDaemon(ctx context.Context) {
 func (lsm *collection) buildSSTFile(sstFileName string, imt *immutableMemTable) *sstFile {
 	file := &sstFile{}
 
-	// file.fd = newMemSSTFileDesc(sstFileName) // in-memory
-	// file.tiles = []*deleteTile{}
+	file.fd = newMemSSTFileDesc(sstFileName) // in-memory mock
 
-	// file.SortKeyMax = []byte{}
-	// file.SortKeyMin = []byte{}
-	// file.deleteKeyMax = []byte{}
-	// file.deleteKeyMin = []byte{}
+	file.tiles = []*deleteTile{}
 
-	// file.aMax = 0
-	// file.b = 0
+	file.SortKeyMax = []byte{}
+	file.SortKeyMin = []byte{}
+	file.deleteKeyMax = []byte{}
+	file.deleteKeyMin = []byte{}
 
-	// imt.Traverse(func(key []byte, entity *sortedMapEntity) {
-	// 	// TODO
-	// })
+	file.ageOldestTomb = 0
+	file.numDelete = 0
 
-	log.Printf("[persist] building SST-file [%s]\n", sstFileName)
+	numEntry := imt.Num()
+	ks := make([][]byte, numEntry)
+	vs := make([][]byte, numEntry)
+	ds := make([][]byte, numEntry)
+	metas := make([]keyMeta, numEntry)
+
+	imt.Traverse(func(key []byte, entity *sortedMapEntity) {
+		ks = append(ks, key)
+		vs = append(vs, entity.value)
+		ds = append(ds, entity.deleteKey)
+		metas = append(metas, entity.meta)
+	})
+
+	log.Printf("[persist] building SST-file[%s]\n", sstFileName)
 
 	return file
 }
 
 func (lsm *collection) persistOne() error {
+	// pop immutableQ and add SST-file should be packed to an atomic action
+
+	// This locking will block the get from immutableQ
+	// TODO OPT: avoid blocking the immutableQ for a long time
+	lsm.immutableQ.Lock()
 
 	// the head of queue is the oldest immutable memTable
-	imt := lsm.immutableQ.front()
+	imt := lsm.immutableQ.imts[0]
 
-	// time cost heavily
-	file := lsm.buildSSTFile("", imt)
+	sstFileName := fmt.Sprintf("%s", uuid.New())
+	sstFile := lsm.buildSSTFile(sstFileName, imt) // time cost heavily
 
-	// two operations below should be packed to a atomic action
-	{
-		lsm.immutableQ.Lock()
+	// add the new sstFile to the top peristed level
+	lsm.addSSTFileOnLevel(lsm.levels[0], sstFile)
 
-		// add the new sstFile to the top peristed level
-		lsm.addSSTFileOnLevel(lsm.levels[0], file)
+	// when the persistence of head done, pop the head from queue
+	lsm.immutableQ.imts = lsm.immutableQ.imts[1:]
 
-		lsm.immutableQ.imts = lsm.immutableQ.imts[1:] // pop the head
+	lsm.immutableQ.Unlock()
 
-		// if the persistence of head done, pop the head from queue
-		lsm.immutableQ.Unlock()
-	}
+	runtime.GC() // force GC to release immutable memTable
 
 	return nil
 }
