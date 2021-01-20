@@ -7,12 +7,6 @@ import (
 	"sync/atomic"
 )
 
-const (
-	constMaxSortKeyBytesLen   int = (1 << 16) - 1
-	constMaxDeleteKeyBytesLen int = (1 << 16) - 1
-	constMaxValueBytesLen     int = (1 << 32) - 1
-)
-
 // A collection implements the Collection interface.
 type collection struct {
 
@@ -109,7 +103,7 @@ func (lsm *collection) getSeqNum() uint64 {
 // the collection, if the key is not found a nil val is returned.
 func (lsm *collection) Get(key []byte, readOptions *ReadOptions) ([]byte, error) {
 
-	if len(key) > constMaxSortKeyBytesLen {
+	if len(key) > maxSortKeyBytesLen {
 		return nil, ErrSortKeyTooLarge
 	}
 
@@ -158,13 +152,13 @@ func (lsm *collection) Get(key []byte, readOptions *ReadOptions) ([]byte, error)
 // Put creates or updates an key-val entry in the Collection.
 func (lsm *collection) Put(key, value, deleteKey []byte, writeOptions *WriteOptions) error {
 
-	if len(key) > constMaxSortKeyBytesLen {
+	if len(key) > maxSortKeyBytesLen {
 		return ErrSortKeyTooLarge
 	}
-	if len(deleteKey) > constMaxDeleteKeyBytesLen {
+	if len(deleteKey) > maxDeleteKeyBytesLen {
 		return ErrDeleteKeyTooLarge
 	}
-	if len(value) > constMaxValueBytesLen {
+	if len(value) > maxValueBytesLen {
 		return ErrValueTooLarge
 	}
 
@@ -199,7 +193,7 @@ func (lsm *collection) resetCurMemTableIfNecessary() {
 // Del deletes a key-val entry from the Collection.
 func (lsm *collection) Del(key []byte, writeOptions *WriteOptions) error {
 
-	if len(key) > constMaxSortKeyBytesLen {
+	if len(key) > maxSortKeyBytesLen {
 		return ErrSortKeyTooLarge
 	}
 
