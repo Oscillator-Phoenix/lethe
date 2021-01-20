@@ -120,50 +120,39 @@ func (lsm *collection) Get(key []byte, readOptions *ReadOptions) ([]byte, error)
 	)
 
 	// look up on current memTable
-	if found, value, meta = lsm.curMemTable.Get(key); found {
-
-		// found the entity but a tombstone
-		if meta.opType == opDel {
-			return nil, ErrKeyNotFound
-		}
-
-		return value, nil
-	}
+	found, value, meta = lsm.curMemTable.Get(key)
 
 	// look up on immutable memTable queue
-	if found, value, meta = lsm.immutableQ.Get(key); found {
-
-		// found the entity but a tombstone
-		if meta.opType == opDel {
-			return nil, ErrKeyNotFound
-		}
-
-		return value, nil
+	if !found {
+		found, value, meta = lsm.immutableQ.Get(key)
 	}
 
 	// loop up on persisted levels
-	{
+	if !found {
+
 		// index i : less(newer) <===> greater(older)
 		for i := 0; i < len(lsm.levels); i++ {
 
-			// log.Printf("getFromLevel %d\n", i+1)
+			found, value, meta = lsm.getFromLevel(lsm.levels[i], key)
 
-			if found, value, meta = lsm.getFromLevel(lsm.levels[i], key); found {
-
-				// found the entity but a tombstone
-				if meta.opType == opDel {
-					return nil, ErrKeyNotFound
-				}
-
-				return value, nil
+			if found {
+				break
 			}
-
-			// keep searching in next older level
+			// else keep searching in next older level
 		}
 	}
 
-	// key is not found
-	return nil, ErrKeyNotFound
+	// key is not found through LSM
+	if !found {
+		return nil, ErrKeyNotFound
+	}
+
+	// found the entity but a tombstone
+	if meta.opType == opDel {
+		return nil, ErrKeyNotFound
+	}
+
+	return value, nil
 }
 
 // Put creates or updates an key-val entry in the Collection.
