@@ -58,8 +58,8 @@ type CollectionOptions struct {
 	// A LSM with L levels has one memTable(`Level 0`) and L-1 perist levels(`Level 1` to `Level L-1` ).
 	NumInitialLevel int
 
-	// StandatdPageSize is a standard size of page
-	StandatdPageSize int
+	// StandardPageSize is a standard size of page
+	StandardPageSize int
 
 	// NumPagePerDeleteTile is the number of pages per delete-tile,
 	// An import tuning knob of LSM tree.
@@ -84,7 +84,7 @@ var DefaultCollectionOptions = CollectionOptions{
 	CreateIfMissing:        false,                                                   //
 	DeletePersistThreshold: 24 * time.Hour,                                          // one day
 	NumInitialLevel:        6,                                                       // practical value
-	StandatdPageSize:       4 * 1024,                                                // 4KB
+	StandardPageSize:       4 * 1024,                                                // 4KB
 	NumPagePerDeleteTile:   8,                                                       // practical value
 
 	// -------------------------------------------

@@ -37,28 +37,34 @@ func TestEntryLen(t *testing.T) {
 }
 
 func TestEntrySerialization(t *testing.T) {
-	key := []byte("key")
-	deleteKey := []byte("deleteKey")
-	value := []byte("value")
-	meta := keyMeta{1111, 2333}
 
-	buf, _ := encodeEntry(key, value, deleteKey, meta)
-	if len(buf) != (3*uint64EncodeLen + len(key) + len(value) + len(deleteKey)) {
-		t.Fail()
+	e := &entry{
+		key:       []byte("key"),
+		value:     []byte("value"),
+		deleteKey: []byte("deleteKey"),
+		meta:      keyMeta{1111, 2333},
 	}
 
-	_key, _value, _deleteKey, _meta, _ := decodeEntry(buf)
+	buf, _ := encodeEntry(e)
+	if len(buf) != persistFormatLen(e) {
+		t.Fail()
+	}
 
-	if !bytes.Equal(key, _key) {
+	e2 := &entry{}
+	if err := decodeEntry(buf, e2); err != nil {
 		t.Fail()
 	}
-	if !bytes.Equal(value, _value) {
+
+	if !bytes.Equal(e.key, e2.key) {
 		t.Fail()
 	}
-	if !bytes.Equal(deleteKey, _deleteKey) {
+	if !bytes.Equal(e.value, e2.value) {
 		t.Fail()
 	}
-	if (meta.seqNum != _meta.seqNum) || (meta.opType != _meta.opType) {
+	if !bytes.Equal(e.deleteKey, e2.deleteKey) {
+		t.Fail()
+	}
+	if (e.meta.seqNum != e2.meta.seqNum) || (e.meta.opType != e2.meta.opType) {
 		t.Fail()
 	}
 }

@@ -99,88 +99,66 @@ func (lsm *collection) persistOne() error {
 	return nil
 }
 
-type persistEntries struct {
-	num              int
-	keys             [][]byte
-	values           [][]byte
-	deleteKeys       [][]byte
-	metas            []keyMeta
-	persistFormatBuf []byte
-}
-
-func newPersistEntries(num int) *persistEntries {
-	pes := &persistEntries{}
-	pes.num = num
-	pes.keys = make([][]byte, 0, num)
-	pes.values = make([][]byte, 0, num)
-	pes.deleteKeys = make([][]byte, 0, num)
-	pes.metas = make([]keyMeta, 0, num)
-	return pes
-}
-
 // buildSSTFile builds a sstFile from the immutable MemTable
 // sstFileName is the UNIQUE identifier of the sstFile
 func (lsm *collection) buildSSTFile(sstFileName string, imt *immutableMemTable) (*sstFile, error) {
 
 	log.Printf("[persist] building SST-file[%s]\n", sstFileName)
 
-	pes := newPersistEntries(imt.Num())
-
 	// take out ordered entries from immutable memTable
+	es := make([]entry, 0, imt.Num())
 	imt.Traverse(func(key []byte, entity *sortedMapEntity) {
-		pes.keys = append(pes.keys, key)
-		pes.values = append(pes.values, entity.value)
-		pes.deleteKeys = append(pes.deleteKeys, entity.deleteKey)
-		pes.metas = append(pes.metas, entity.meta)
-
-		if buf, err := encodeEntry(key, entity.value, entity.deleteKey, entity.meta); err == nil {
-			pes.persistFormatBuf = buf
-		}
+		es = append(es, entry{
+			key:       key,
+			value:     entity.value,
+			deleteKey: entity.deleteKey,
+			meta:      entity.meta,
+		})
 	})
 
 	file := &sstFile{}
 
 	// meta
-	lsm.buildSSTFileMeta(file, pes)
+	lsm.buildSSTFileMeta(file, es)
 
 	// fd
 	file.fd = newMemSSTFileDesc(sstFileName)
 
 	// tiles
-	pesPages := lsm.splitToPages(pes)
-	file.tiles = lsm.PackPagesIntoTile(pesPages)
+	esPages := splitToPages(es, lsm.options.StandardPageSize)
+	file.tiles = lsm.PackPagesIntoTile(esPages)
 
 	return file, nil
 }
 
-func (lsm *collection) buildSSTFileMeta(file *sstFile, pes *persistEntries) {
+func (lsm *collection) buildSSTFileMeta(file *sstFile, es []entry) {
 
 	var (
-		deleteKeyMin  []byte = pes.deleteKeys[0] // init value
-		deleteKeyMax  []byte = pes.deleteKeys[0] // init value
-		ageOldestTomb uint32 = 0                 // init value
-		numDelete     int    = 0                 // init value
-		numEntry      int    = pes.num           // finish value
+		deleteKeyMin  []byte = es[0].deleteKey // init value
+		deleteKeyMax  []byte = es[0].deleteKey // init value
+		ageOldestTomb uint32 = 0               // init value
+		numDelete     int    = 0               // init value
+		numEntry      int    = len(es)         // finish value
 	)
 
 	dLess := lsm.options.DeleteKeyLess
 
 	for i := 0; i < numEntry; i++ {
 
-		if dLess(pes.deleteKeys[i], deleteKeyMin) {
-			deleteKeyMin = pes.deleteKeys[i]
+		if dLess(es[i].deleteKey, deleteKeyMin) {
+			deleteKeyMin = es[i].deleteKey
 		}
 
-		if dLess(deleteKeyMax, pes.deleteKeys[i]) {
-			deleteKeyMax = pes.deleteKeys[i]
+		if dLess(deleteKeyMax, es[i].deleteKey) {
+			deleteKeyMax = es[i].deleteKey
 		}
 
-		if pes.metas[i].opType == opDel {
+		if es[i].meta.opType == opDel {
 
 			numDelete++
 
 			// parse age of entry from seqNum
-			age := uint32((pes.metas[i].seqNum >> 32) & 0xFFFFFFFF)
+			age := uint32((es[i].meta.seqNum >> 32) & 0xFFFFFFFF)
 			if ageOldestTomb < age {
 				ageOldestTomb = age
 			}
@@ -188,8 +166,8 @@ func (lsm *collection) buildSSTFileMeta(file *sstFile, pes *persistEntries) {
 	}
 
 	// meta
-	file.SortKeyMin = pes.keys[0]
-	file.SortKeyMax = pes.keys[numEntry-1]
+	file.SortKeyMin = es[0].key
+	file.SortKeyMax = es[numEntry-1].key
 	file.DeleteKeyMin = deleteKeyMin
 	file.DeleteKeyMax = deleteKeyMax
 	file.AgeOldestTomb = ageOldestTomb
@@ -197,10 +175,37 @@ func (lsm *collection) buildSSTFileMeta(file *sstFile, pes *persistEntries) {
 	file.NumEntry = numEntry
 }
 
-func (lsm *collection) splitToPages(pes *persistEntries) (pesPages []persistEntries) {
-	return nil
+// splitToPages splits total entries to page-granularity entries according to standardPageSize.
+// pure function
+// standardPageSize is a recommended value for page size and most pages will be slightly larger than it.
+func splitToPages(es []entry, standardPageSize int) (esPages [][]entry) {
+
+	esPages = [][]entry{}
+
+	start := 0
+	num := 0
+	size := 0
+
+	for i := 0; i < len(es); i++ {
+
+		size += persistFormatLen(&es[i])
+		num++
+
+		if size >= standardPageSize || i == len(es)-1 {
+
+			esPages = append(esPages, es[start:start+num])
+
+			// reset
+			start += num
+			num = 0
+			size = 0
+		}
+	}
+
+	return esPages
 }
 
-func (lsm *collection) PackPagesIntoTile(pes []persistEntries) []*deleteTile {
+func (lsm *collection) PackPagesIntoTile(esPages [][]entry) []*deleteTile {
+
 	return nil
 }

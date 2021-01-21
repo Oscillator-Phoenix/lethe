@@ -2,18 +2,25 @@ package lethe
 
 import "encoding/binary"
 
-// -------------------------------------------------------------------------------------------------
+const (
+	opBase uint64 = 0                  // 0x0000000000000000
+	opPut  uint64 = opBase | (1 << 56) // 0x0100000000000000
+	opDel  uint64 = opBase | (2 << 56) // 0x0200000000000000, tombstone
+)
 
 type keyMeta struct {
 	seqNum uint64 // sequence number of operation
 	opType uint64 // now, opType only uses the highest 8 bits
 }
 
-const (
-	opBase uint64 = 0                  // 0x0000000000000000
-	opPut  uint64 = opBase | (1 << 56) // 0x0100000000000000
-	opDel  uint64 = opBase | (2 << 56) // 0x0200000000000000, tombstone
-)
+// -------------------------------------------------------------------------------------------------
+
+type entry struct {
+	key       []byte
+	value     []byte
+	deleteKey []byte
+	meta      keyMeta
+}
 
 const (
 	maxSortKeyBytesLen   int = (1 << 16) - 1
@@ -33,21 +40,33 @@ const (
 	uint64EncodeLen = binary.MaxVarintLen64 // const 10
 )
 
-// entryPersistFormatLen returns the length of persistent format.
-func entryPersistFormatLen(key, value, deleteKey []byte) int {
-	return (3*uint64EncodeLen + len(key) + len(deleteKey) + len(value))
+// ------------------------------------------------------------------------------------
+// persist format
+// ------------------------------------------------------------------------------------
+// [ lenMeta(10) | seqNum(10) | opType(10) | key | value | deleteKey ]
+// ------------------------------------------------------------------------------------
+
+// persistFormatLen returns the length of persistent format.
+// pure function
+func persistFormatLen(e *entry) int {
+	// 3*uint64EncodeLen means lenMeta(10), seqNum(10), opType(10)
+	return (3*uint64EncodeLen + len(e.key) + len(e.deleteKey) + len(e.value))
 }
 
-// encodeEntry encodes entry to persistent format.
-func encodeEntry(key, value, deleteKey []byte, meta keyMeta) (buf []byte, err error) {
+// encodeEntry allocates a new byte buffer to save persistent format and encodes entry to the buffer.
+func encodeEntry(e *entry) (buf []byte, err error) {
+
+	key := e.key
+	value := e.value
+	deleteKey := e.deleteKey
+	meta := e.meta
 
 	var lenMeta uint64 = 0
 	lenMeta |= uint64(len(key)) << sortKeyLenOff
 	lenMeta |= uint64(len(deleteKey)) << deleteKeyLenOff
 	lenMeta |= uint64(len(value)) << valueLenOff
 
-	// persist format [ lenMeta(10) | seqNum(10) | opType(10) | key | value | deleteKey ]
-	buf = make([]byte, entryPersistFormatLen(key, value, deleteKey))
+	buf = make([]byte, persistFormatLen(e))
 
 	binary.PutUvarint(buf[0*uint64EncodeLen:], lenMeta)
 	binary.PutUvarint(buf[1*uint64EncodeLen:], meta.seqNum)
@@ -60,7 +79,8 @@ func encodeEntry(key, value, deleteKey []byte, meta keyMeta) (buf []byte, err er
 }
 
 // decodeEntry decodes entry from persistent format.
-func decodeEntry(buf []byte) (key, value, deleteKey []byte, meta keyMeta, err error) {
+// Note that decodeEntrys will NOT allocate new buffers but occupy the input buf.
+func decodeEntry(buf []byte, e *entry) (err error) {
 
 	lenMeta, _ := binary.Uvarint(buf[0*uint64EncodeLen : 1*uint64EncodeLen])
 	seqNum, _ := binary.Uvarint(buf[1*uint64EncodeLen : 2*uint64EncodeLen])
@@ -70,16 +90,16 @@ func decodeEntry(buf []byte) (key, value, deleteKey []byte, meta keyMeta, err er
 	valueLen := int((lenMeta & valueLenMask) >> valueLenOff)
 	deleteKeyLen := int((lenMeta & deleteKeyLenMask) >> deleteKeyLenOff)
 
-	key = buf[3*uint64EncodeLen : 3*uint64EncodeLen+sortKeyLen]
-	value = buf[3*uint64EncodeLen+sortKeyLen : 3*uint64EncodeLen+sortKeyLen+valueLen]
-	deleteKey = buf[3*uint64EncodeLen+sortKeyLen+valueLen : 3*uint64EncodeLen+sortKeyLen+valueLen+deleteKeyLen]
+	e.key = buf[3*uint64EncodeLen : 3*uint64EncodeLen+sortKeyLen]
+	e.value = buf[3*uint64EncodeLen+sortKeyLen : 3*uint64EncodeLen+sortKeyLen+valueLen]
+	e.deleteKey = buf[3*uint64EncodeLen+sortKeyLen+valueLen : 3*uint64EncodeLen+sortKeyLen+valueLen+deleteKeyLen]
 
-	meta = keyMeta{
+	e.meta = keyMeta{
 		seqNum: seqNum,
 		opType: opType,
 	}
 
-	return key, value, deleteKey, meta, nil
+	return nil
 }
 
 // -------------------------------------------------------------------------------------------------
