@@ -60,7 +60,7 @@ func (lsm *collection) persistDaemon(ctx context.Context) {
 		select {
 		case task := <-lsm.persistTrigger:
 			{
-				log.Printf("[persist] trigger task [%v], immutableQueue size [%d]\n", task, lsm.immutableQ.size())
+				log.Printf("[persist] trigger task [%v], immutable queue len [%d]\n", task, lsm.immutableQ.size())
 				lsm.persistOne()
 			}
 		case <-ctx.Done():
@@ -70,75 +70,6 @@ func (lsm *collection) persistDaemon(ctx context.Context) {
 			}
 		}
 	}
-}
-
-// buildSSTFile builds a sstFile from the immutableMemTable
-// sstFileName is the UNIQUE identifier of the sstFile
-func (lsm *collection) buildSSTFile(sstFileName string, imt *immutableMemTable) (*sstFile, error) {
-
-	log.Printf("[persist] building SST-file[%s]\n", sstFileName)
-
-	// sLess := lsm.options.SortKeyLess
-	dLess := lsm.options.DeleteKeyLess
-
-	numEntry := imt.Num()
-	ks := make([][]byte, 0, numEntry)
-	vs := make([][]byte, 0, numEntry)
-	ds := make([][]byte, 0, numEntry)
-	metas := make([]keyMeta, 0, numEntry)
-
-	// take out data from immutable memTable
-	imt.Traverse(func(key []byte, entity *sortedMapEntity) {
-		ks = append(ks, key)
-		vs = append(vs, entity.value)
-		ds = append(ds, entity.deleteKey)
-		metas = append(metas, entity.meta)
-	})
-
-	var (
-		deleteKeyMin  []byte = ds[0] // init value
-		deleteKeyMax  []byte = ds[0] // init value
-		numDelete     int    = 0     // init value
-		ageOldestTomb uint32 = 0     // intt value
-	)
-
-	for i := 0; i < numEntry; i++ {
-		if dLess(ds[i], deleteKeyMin) {
-			deleteKeyMin = ds[i]
-		}
-		if dLess(deleteKeyMax, ds[i]) {
-			deleteKeyMax = ds[i]
-		}
-		if metas[i].opType == opDel {
-			numDelete++
-
-			// parse age of entry from seqNum
-			age := uint32((metas[i].seqNum >> 32) & 0xFFFFFFFF)
-			if ageOldestTomb < age {
-				ageOldestTomb = age
-			}
-		}
-	}
-
-	file := &sstFile{}
-
-	// meta
-	file.SortKeyMin = ks[0]
-	file.SortKeyMax = ks[numEntry-1]
-	file.DeleteKeyMin = deleteKeyMin
-	file.DeleteKeyMax = deleteKeyMax
-	file.AgeOldestTomb = ageOldestTomb
-	file.NumDelete = numDelete
-	file.NumEntry = numEntry
-
-	file.fd = newMemSSTFileDesc(sstFileName) // init, in-memory mock
-	file.tiles = []*deleteTile{}             // init
-
-	// TODO
-	// lsm.bulidPages(ks, vs, ds, metas)
-	// lsm.buildDeleteTile()
-
-	return file, nil
 }
 
 func (lsm *collection) persistOne() error {
@@ -162,7 +93,114 @@ func (lsm *collection) persistOne() error {
 
 	lsm.immutableQ.Unlock()
 
-	runtime.GC() // force GC to release immutable memTable
+	// force GC to release immutable memTable
+	runtime.GC()
 
+	return nil
+}
+
+type persistEntries struct {
+	num              int
+	keys             [][]byte
+	values           [][]byte
+	deleteKeys       [][]byte
+	metas            []keyMeta
+	persistFormatBuf []byte
+}
+
+func newPersistEntries(num int) *persistEntries {
+	pes := &persistEntries{}
+	pes.num = num
+	pes.keys = make([][]byte, 0, num)
+	pes.values = make([][]byte, 0, num)
+	pes.deleteKeys = make([][]byte, 0, num)
+	pes.metas = make([]keyMeta, 0, num)
+	return pes
+}
+
+// buildSSTFile builds a sstFile from the immutable MemTable
+// sstFileName is the UNIQUE identifier of the sstFile
+func (lsm *collection) buildSSTFile(sstFileName string, imt *immutableMemTable) (*sstFile, error) {
+
+	log.Printf("[persist] building SST-file[%s]\n", sstFileName)
+
+	pes := newPersistEntries(imt.Num())
+
+	// take out ordered entries from immutable memTable
+	imt.Traverse(func(key []byte, entity *sortedMapEntity) {
+		pes.keys = append(pes.keys, key)
+		pes.values = append(pes.values, entity.value)
+		pes.deleteKeys = append(pes.deleteKeys, entity.deleteKey)
+		pes.metas = append(pes.metas, entity.meta)
+
+		if buf, err := encodeEntry(key, entity.value, entity.deleteKey, entity.meta); err == nil {
+			pes.persistFormatBuf = buf
+		}
+	})
+
+	file := &sstFile{}
+
+	// meta
+	lsm.buildSSTFileMeta(file, pes)
+
+	// fd
+	file.fd = newMemSSTFileDesc(sstFileName)
+
+	// tiles
+	pesPages := lsm.splitToPages(pes)
+	file.tiles = lsm.PackPagesIntoTile(pesPages)
+
+	return file, nil
+}
+
+func (lsm *collection) buildSSTFileMeta(file *sstFile, pes *persistEntries) {
+
+	var (
+		deleteKeyMin  []byte = pes.deleteKeys[0] // init value
+		deleteKeyMax  []byte = pes.deleteKeys[0] // init value
+		ageOldestTomb uint32 = 0                 // init value
+		numDelete     int    = 0                 // init value
+		numEntry      int    = pes.num           // finish value
+	)
+
+	dLess := lsm.options.DeleteKeyLess
+
+	for i := 0; i < numEntry; i++ {
+
+		if dLess(pes.deleteKeys[i], deleteKeyMin) {
+			deleteKeyMin = pes.deleteKeys[i]
+		}
+
+		if dLess(deleteKeyMax, pes.deleteKeys[i]) {
+			deleteKeyMax = pes.deleteKeys[i]
+		}
+
+		if pes.metas[i].opType == opDel {
+
+			numDelete++
+
+			// parse age of entry from seqNum
+			age := uint32((pes.metas[i].seqNum >> 32) & 0xFFFFFFFF)
+			if ageOldestTomb < age {
+				ageOldestTomb = age
+			}
+		}
+	}
+
+	// meta
+	file.SortKeyMin = pes.keys[0]
+	file.SortKeyMax = pes.keys[numEntry-1]
+	file.DeleteKeyMin = deleteKeyMin
+	file.DeleteKeyMax = deleteKeyMax
+	file.AgeOldestTomb = ageOldestTomb
+	file.NumDelete = numDelete
+	file.NumEntry = numEntry
+}
+
+func (lsm *collection) splitToPages(pes *persistEntries) (pesPages []persistEntries) {
+	return nil
+}
+
+func (lsm *collection) PackPagesIntoTile(pes []persistEntries) []*deleteTile {
 	return nil
 }
