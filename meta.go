@@ -103,33 +103,3 @@ func decodeEntry(buf []byte, e *entry) (err error) {
 }
 
 // -------------------------------------------------------------------------------------------------
-
-type fenchPointer struct {
-	SortKeyMin   []byte
-	SortKeyMax   []byte
-	DeleteKeyMin []byte
-	DeleteKeyMax []byte
-}
-
-type sstFileMeta struct {
-
-	// fence pointer
-	fenchPointer
-
-	// metadata
-	AgeOldestTomb uint32 // the age of oldest tomb in file, Unix seconds
-	NumEntry      int    // the number of entries in file
-	NumDelete     int    // the number of point delete in file
-}
-
-type deleteTileMeta struct {
-
-	// fence pointer
-	fenchPointer
-}
-
-type pageMeta struct {
-
-	// fence pointer
-	fenchPointer
-}

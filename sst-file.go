@@ -1,134 +1,127 @@
 package lethe
 
 import (
-	"bufio"
 	"bytes"
 	"io"
-	"os"
-	"path"
+	"lethe/bloomfilter"
 )
 
-// sstFile is the in-memory format of SST-file.
-type sstFile struct {
+type page struct {
+	Num    int
+	Offset int64
+	Size   int64
 
-	// meta
-	sstFileMeta
+	SortKeyMin   []byte
+	SortKeyMax   []byte
+	DeleteKeyMin []byte
+	DeleteKeyMax []byte
 
-	// file reader
-	fd sstFileDesc
+	// Range Secondary Deletes in a page: in place operation, just shrink size
+	// Range Secondary Deletes in a file: full drop, partial drop
 
-	// delete tiles
-	tiles []*deleteTile
+	// --------------------------
+	// not exported
+
+	// As the paper 4.2.3 says, lethe maintains Bloom Filters on primay key at the granularity of page.
+	bloom *bloomfilter.BloomFilter
 }
 
-// -----------------------------------------------------------------------------
+type deleteTile struct {
+	SortKeyMin   []byte
+	SortKeyMax   []byte
+	DeleteKeyMin []byte
+	DeleteKeyMax []byte
+
+	Pages []page
+}
 
 // Note that os.File implements sstFileDesc interface.
 type sstFileDesc interface {
 	Name() string
 	io.ReaderAt // ReadAt(p []byte, off int64) (n int, err error)
 	io.Writer   // Write(p []byte) (n int, err error)
-	io.Closer   // Close() error
+	// io.WriterAt  // WriteAt(b []byte, off int64) (n int, err error)
+	io.Closer // Close() error
+}
+
+// sstFile is the in-memory format of SST-file.
+type sstFile struct {
+	Name string
+
+	SortKeyMin   []byte
+	SortKeyMax   []byte
+	DeleteKeyMin []byte
+	DeleteKeyMax []byte
+
+	// the age of oldest tomb in file, Unix seconds
+	AgeOldestTomb uint32
+	// the number of entries in file
+	NumEntry int
+	// the number of point delete in file
+	NumDelete int
+
+	Tiles []deleteTile
+
+	// --------------------------
+	// not exported
+
+	fd sstFileDesc
 }
 
 // -----------------------------------------------------------------------------
+// encode & decode sstFile
+// -----------------------------------------------------------------------------
 
-// memSSTFileDesc implements sstFileReader interface and sstFileWriter interface.
-// memSSTFileDesc is a mock.
-type memSSTFileDesc struct {
-	buf  bytes.Buffer
-	name string
-}
-
-// newMemSSTFileDesc returns a in-memory mock of sstFileDesc
-func newMemSSTFileDesc(name string) sstFileDesc {
-	fd := &memSSTFileDesc{}
-
-	// A bytes.Buffer needs no initialization.
-
-	fd.name = name
-
-	return fd
-}
-
-// Name returns unique name of fd.
-func (fd *memSSTFileDesc) Name() string {
-	return fd.name
-}
-
-// ReadAt is an io.ReaderAt interface.
-// ReadAt reads len(p) bytes into p starting at offset off in the underlying input source.
-func (fd *memSSTFileDesc) ReadAt(p []byte, off int64) (n int, err error) {
-	tmpBuf := bytes.NewBuffer(fd.buf.Bytes()[off:])
-	return tmpBuf.Read(p)
-}
-
-// Close is an io.Closer interface
-func (fd *memSSTFileDesc) Close() error {
-	// do nothing in mock
+func encodeSSTFile(file *sstFile) (buf []byte) {
+	// TODO
 	return nil
 }
 
-// Write is an io.Writer interface
-// Write writes len(p) bytes from p to the underlying data stream.
-// Write appends the contents of p to the buffer, growing the buffer as needed.
-func (fd *memSSTFileDesc) Write(p []byte) (n int, err error) {
-	return fd.buf.Write(p)
+func decodeSSTFile(buf []byte) (*sstFile, error) {
+	// TODO
+	return nil, nil
 }
 
 // -----------------------------------------------------------------------------
+// bloom filter
+// -----------------------------------------------------------------------------
 
-type diskSSTFileDesc struct {
-	name string
-	file *os.File
-	wbuf *bufio.Writer
+func (p *page) buildBloomFilter() error {
+	// TODO
+	return nil
 }
 
-func newDiskSSTFileDesc(dirPath, name string) sstFileDesc {
-	fd := &diskSSTFileDesc{}
+// bloomFilterExists returns false if the key is exactly not in this page
+func (p *page) bloomFilterExists(key []byte) bool {
+	// TODO
+	return true
+}
 
-	fd.name = name
+// -----------------------------------------------------------------------------
+// load data
+// -----------------------------------------------------------------------------
 
-	fpath := path.Join(dirPath, name)
-	f, err := os.OpenFile(fpath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
-	if err != nil {
-		panic(err)
+func loadEntries(file *sstFile, p *page) ([]entry, error) {
+	buf := make([]byte, p.Size)
+	es := make([]entry, p.Num)
+
+	if _, err := file.fd.ReadAt(buf, p.Offset); err != nil {
+		return nil, err
 	}
 
-	fd.file = f
-
-	fd.wbuf = bufio.NewWriterSize(f, 1<<20) // 1MB write buffer
-
-	return fd
-}
-
-func (fd *diskSSTFileDesc) Name() string {
-	return fd.name
-}
-
-// ReadAt is an io.ReaderAt interface.
-func (fd *diskSSTFileDesc) ReadAt(p []byte, off int64) (n int, err error) {
-	return fd.file.ReadAt(p, off)
-}
-
-// Write is an io.Writer interface
-func (fd *diskSSTFileDesc) Write(p []byte) (n int, err error) {
-	return fd.wbuf.Write(p) // buffer write
-}
-
-// Close is an io.Closer interface
-func (fd *diskSSTFileDesc) Close() error {
-
-	// sync flush
-	if fd.wbuf != nil {
-		if err := fd.wbuf.Flush(); err != nil {
-			return err
+	off := 0
+	for i := 0; i < p.Num; i++ {
+		if err := decodeEntry(buf[off:], &es[i]); err != nil {
+			return nil, err
 		}
+		off += persistFormatLen(&es[i])
 	}
 
-	return fd.file.Close()
+	return nil, nil
 }
 
+// -----------------------------------------------------------------------------
+// get
 // -----------------------------------------------------------------------------
 
 func (lsm *collection) getFromSSTFile(file *sstFile, key []byte) (found bool, value []byte, meta keyMeta) {
@@ -156,13 +149,13 @@ func (lsm *collection) getFromSSTFile(file *sstFile, key []byte) (found bool, va
 		}
 
 		// load data form disk...
-		ks, vs, metas := p.load(file.fd)
+		es, _ := loadEntries(file, p)
 
 		// TODO
 		// binary search because entries within every page are sorted on sort key
-		for i := 0; i < len(ks); i++ {
-			if bytes.Equal(ks[i], key) {
-				return true, vs[i], metas[i]
+		for i := 0; i < len(es); i++ {
+			if bytes.Equal(es[i].key, key) {
+				return true, es[i].value, es[i].meta
 			}
 		}
 
@@ -179,9 +172,9 @@ func (lsm *collection) getFromSSTFile(file *sstFile, key []byte) (found bool, va
 		}
 
 		// linear search because pages within a delete-tile are sorted on delete key but not sort key
-		for i := 0; i < len(dt.pages); i++ {
+		for i := 0; i < len(dt.Pages); i++ {
 
-			if found, value, meta = pageGet(dt.pages[i]); found {
+			if found, value, meta = pageGet(&dt.Pages[i]); found {
 				return true, value, meta
 			}
 
@@ -194,9 +187,9 @@ func (lsm *collection) getFromSSTFile(file *sstFile, key []byte) (found bool, va
 
 	// TODO
 	// binary search because delete tiles within a sstfile are sorted on sort key
-	for i := 0; i < len(file.tiles); i++ {
+	for i := 0; i < len(file.Tiles); i++ {
 
-		if found, value, meta = tileGet(file.tiles[i]); found {
+		if found, value, meta = tileGet(&file.Tiles[i]); found {
 			return true, value, meta
 		}
 

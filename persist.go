@@ -82,8 +82,21 @@ func (lsm *collection) persistOne() error {
 	// the head of queue is the oldest immutable memTable
 	imt := lsm.immutableQ.imts[0]
 
+	// take out ordered entries from immutable memTable
+	es := make([]entry, 0, imt.Num())
+	imt.Traverse(func(key []byte, entity *sortedMapEntity) {
+		es = append(es, entry{
+			key:       key,
+			value:     entity.value,
+			deleteKey: entity.deleteKey,
+			meta:      entity.meta,
+		})
+	})
+
 	sstFileName := fmt.Sprintf("%s", uuid.New())
-	sstFile, _ := lsm.buildSSTFile(sstFileName, imt) // time cost heavily
+	sstFile, _ := lsm.buildSSTFile(sstFileName, es) // time cost heavily
+
+	log.Printf("[persist] building SST-file[%s]\n", sstFileName)
 
 	// add the new sstFile to the top peristed level
 	lsm.addSSTFileOnLevel(lsm.levels[0], sstFile)
@@ -99,34 +112,22 @@ func (lsm *collection) persistOne() error {
 	return nil
 }
 
-// buildSSTFile builds a sstFile from the immutable MemTable
+// buildSSTFile builds a sstFile from entries
 // sstFileName is the UNIQUE identifier of the sstFile
-func (lsm *collection) buildSSTFile(sstFileName string, imt *immutableMemTable) (*sstFile, error) {
-
-	log.Printf("[persist] building SST-file[%s]\n", sstFileName)
-
-	// take out ordered entries from immutable memTable
-	es := make([]entry, 0, imt.Num())
-	imt.Traverse(func(key []byte, entity *sortedMapEntity) {
-		es = append(es, entry{
-			key:       key,
-			value:     entity.value,
-			deleteKey: entity.deleteKey,
-			meta:      entity.meta,
-		})
-	})
+func (lsm *collection) buildSSTFile(sstFileName string, es []entry) (*sstFile, error) {
 
 	file := &sstFile{}
 
 	// meta
 	lsm.buildSSTFileMeta(file, es)
 
-	// fd
-	file.fd = newMemSSTFileDesc(sstFileName)
-
 	// tiles
 	esPages := splitToPages(es, lsm.options.StandardPageSize)
-	file.tiles = lsm.PackPagesIntoTile(esPages)
+	esTiles := packPagesIntoTiles(esPages, lsm.options.NumPagePerDeleteTile)
+
+	// fd
+	file.fd = newMemSSTFileDesc(sstFileName)
+	lsm.packTilesIntoSSTFile(file, esTiles)
 
 	return file, nil
 }
@@ -205,7 +206,44 @@ func splitToPages(es []entry, standardPageSize int) (esPages [][]entry) {
 	return esPages
 }
 
-func (lsm *collection) PackPagesIntoTile(esPages [][]entry) []*deleteTile {
+// packPagesIntoTiles packs page-granularity entries into tile-granularity entries
+// pure function
+func packPagesIntoTiles(esPages [][]entry, numPagePerTile int) (esTiles [][][]entry) {
+
+	esTiles = [][][]entry{}
+
+	for start := 0; start < len(esPages); start += numPagePerTile {
+		end := start + numPagePerTile
+		if end > len(esPages) {
+			end = len(esPages)
+		}
+		esTiles = append(esTiles, esPages[start:end])
+	}
+
+	return esTiles
+}
+
+func (lsm *collection) packTilesIntoSSTFile(file *sstFile, esTiles [][][]entry) error {
+
+	// write to fd
+
+	// fileMetaLen := 0
+	// file.fd.Write(fileMetaLen)
+	// file.fd.Write(fileMeta)
+
+	// for i := 0; i < numTile; i++ {
+
+	// 	tile = tile[i]
+
+	// 	file.fd.Write(tileMetaLen)
+	// 	file.fd.Write(tileMeta)
+
+	// 	for j := 0; j < numPage; j++ {
+	// 		file.fd.Write(pageMetaLen)
+	// 		file.fd.Write(pageMeta)
+	// 		file.fd.Write(entries)
+	// 	}
+	// }
 
 	return nil
 }
