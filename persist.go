@@ -82,7 +82,7 @@ func (lsm *collection) persistOne() error {
 	// the head of queue is the oldest immutable memTable
 	imt := lsm.immutableQ.imts[0]
 
-	// take out ordered entries from immutable memTable
+	// take out entries sorted on sortKey from immutable memTable
 	es := make([]entry, 0, imt.Num())
 	imt.Traverse(func(key []byte, entity *sortedMapEntity) {
 		es = append(es, entry{
@@ -112,22 +112,36 @@ func (lsm *collection) persistOne() error {
 	return nil
 }
 
+type persistPage struct {
+	p  page
+	es []entry
+}
+
+type persistTile struct {
+	tile   deleteTile
+	ppages []persistPage
+}
+
 // buildSSTFile builds a sstFile from entries
 // sstFileName is the UNIQUE identifier of the sstFile
+// require: the input []entry is sorted on sortKey
 func (lsm *collection) buildSSTFile(sstFileName string, es []entry) (*sstFile, error) {
 
 	file := &sstFile{}
 
-	// meta
+	// now es is sorted on sortKey
+	// note that `buildSSTFileMeta` will NOT change the order of es
 	lsm.buildSSTFileMeta(file, es)
 
-	// tiles
-	esPages := splitToPages(es, lsm.options.StandardPageSize)
-	esTiles := packPagesIntoTiles(esPages, lsm.options.NumPagePerDeleteTile)
+	// now es is sorted on sortKey
+	// note that `splitToTiles` will change the order of es
+	pts := lsm.splitToTiles(es)
 
-	// fd
+	// open fd via unique name
 	file.fd = openMemSSTFileDesc(sstFileName) // mock
-	lsm.packTilesIntoSSTFile(file, esTiles)
+
+	// pack
+	lsm.packTilesIntoFile(file, pts)
 
 	return file, nil
 }
@@ -176,25 +190,63 @@ func (lsm *collection) buildSSTFileMeta(file *sstFile, es []entry) {
 	file.NumEntry = numEntry
 }
 
-// splitToPages splits total entries to page-granularity entries according to standardPageSize.
-// pure function
-// standardPageSize is a recommended value for page size and most pages will be slightly larger than it.
-func splitToPages(es []entry, standardPageSize int) (esPages [][]entry) {
+// -------------------------------------------------------------------------------
 
-	esPages = [][]entry{}
+func divUp(dividend, divisor int) int {
+	return (dividend + divisor - 1) / divisor
+}
+
+func entriesTotalSize(es []entry) int {
+	sum := 0
+	for i := 0; i < len(es); i++ {
+		sum += persistFormatLen(&es[i])
+	}
+	return sum
+}
+
+func entriesAvgSize(es []entry) int {
+	return divUp(entriesTotalSize(es), len(es))
+}
+
+// require: input `es` is sorted on deleteKey
+func (lsm *collection) splitToPages(es []entry) []persistPage {
+
+	pps := []persistPage{}
 
 	start := 0
 	num := 0
 	size := 0
 
+	// divide into pages on the delete key
 	for i := 0; i < len(es); i++ {
 
 		size += persistFormatLen(&es[i])
 		num++
 
-		if size >= standardPageSize || i == len(es)-1 {
+		if size >= lsm.options.StandardPageSize || i == len(es)-1 {
 
-			esPages = append(esPages, es[start:start+num])
+			// construct a page
+			{
+				var pp persistPage
+
+				esPage := es[start : start+num]
+
+				// now esPage is sorted on delete key
+				pp.p.DeleteKeyMin = esPage[0].deleteKey
+				pp.p.DeleteKeyMax = esPage[len(esPage)-1].deleteKey
+
+				sortEntriesOnSortKey(esPage, lsm.options.SortKeyLess)
+
+				// now esPage is sorted on sort key
+				pp.p.SortKeyMin = esPage[0].key
+				pp.p.SortKeyMax = esPage[len(esPage)-1].key
+
+				// esPage should be sorted on sort key
+				// note that the order of entries in `esPage` can not be changed anymore
+				pp.es = esPage
+
+				pps = append(pps, pp)
+			}
 
 			// reset
 			start += num
@@ -203,105 +255,93 @@ func splitToPages(es []entry, standardPageSize int) (esPages [][]entry) {
 		}
 	}
 
-	return esPages
+	return pps
 }
 
-// packPagesIntoTiles packs page-granularity entries into tile-granularity entries
-// pure function
-func packPagesIntoTiles(esPages [][]entry, numPagePerTile int) (esTiles [][][]entry) {
+// require: input `es` is sorted on sort key
+func (lsm *collection) splitToTiles(es []entry) []persistTile {
 
-	esTiles = [][][]entry{}
+	standardTileSize := lsm.options.NumPagePerDeleteTile * lsm.options.StandardPageSize
+	approximateNumEntryInTile := divUp(standardTileSize, entriesAvgSize(es))
 
-	for start := 0; start < len(esPages); start += numPagePerTile {
-		end := start + numPagePerTile
-		if end > len(esPages) {
-			end = len(esPages)
+	pts := []persistTile{}
+
+	// divide into delete-tiles on the sort key
+	for start := 0; start < len(es); start += approximateNumEntryInTile {
+
+		end := start + approximateNumEntryInTile
+		if end > len(es) {
+			end = len(es)
 		}
-		esTiles = append(esTiles, esPages[start:end])
-	}
 
-	return esTiles
-}
+		esTile := es[start:end]
 
-func (lsm *collection) packTilesIntoSSTFile(file *sstFile, esTiles [][][]entry) error {
+		{
+			var pt persistTile
 
-	var (
-		off   int64 = 0
-		err   error
-		dLess = lsm.options.DeleteKeyLess
-	)
+			// now esTile is sorted on sort key
+			pt.tile.SortKeyMin = esTile[0].key
+			pt.tile.SortKeyMax = esTile[len(esTile)-1].key
 
-	file.Tiles = make([]deleteTile, len(esTiles))
-	for tileID := 0; tileID < len(esTiles); tileID++ {
-		file.Tiles[tileID].Pages = make([]page, len(esTiles[tileID]))
-	}
+			sortEntriesOnDeleteKey(esTile, lsm.options.DeleteKeyLess)
 
-	for tileID := 0; tileID < len(esTiles); tileID++ {
+			// now esTile is sorted on delete key
+			pt.tile.DeleteKeyMin = esTile[0].deleteKey
+			pt.tile.DeleteKeyMax = esTile[len(esTile)].deleteKey
 
-		for pageID := 0; pageID < len(esTiles[tileID]); pageID++ {
-
-			var (
-				esPage       []entry = esTiles[tileID][pageID]
-				p            *page   = &file.Tiles[tileID].Pages[pageID]
-				buf          []byte
-				deleteKeyMin []byte = esPage[0].deleteKey // init value
-				deleteKeyMax []byte = esPage[0].deleteKey // init value
-			)
-
-			// find min & max deleteKey in a page
-			for i := 0; i < len(esPage); i++ {
-				if dLess(esPage[i].deleteKey, deleteKeyMin) {
-					deleteKeyMin = esPage[i].deleteKey
-				}
-
-				if dLess(deleteKeyMax, esPage[i].deleteKey) {
-					deleteKeyMax = esPage[i].deleteKey
-				}
-			}
-
-			// encode data
-			buf, err = encodeEntries(esPage)
-			if err != nil {
-				return err
-			}
-
-			// write data
-			n, err := file.fd.Write(buf)
-			if n != len(buf) || err != nil {
-				return ErrPlaceholder
-			}
-
-			// build page structure
-			p.SortKeyMin = esPage[0].key             // finish value
-			p.SortKeyMax = esPage[len(esPage)-1].key // finish value
-			p.DeleteKeyMin = deleteKeyMin
-			p.DeleteKeyMax = deleteKeyMax
-			p.Size = int64(len(buf))
-			p.Offset = off
-
-			off += int64(n)
+			pt.ppages = lsm.splitToPages(esTile)
+			pts = append(pts, pt)
 		}
 	}
 
-	// write to fd
+	return pts
+}
 
-	// fileMetaLen := 0
-	// file.fd.Write(fileMetaLen)
-	// file.fd.Write(fileMeta)
+func (lsm *collection) packTilesIntoFile(file *sstFile, pts []persistTile) error {
 
-	// for i := 0; i < numTile; i++ {
+	// var (
+	// 	off int64 = 0
+	// )
 
-	// 	tile = tile[i]
+	// 	// write
 
-	// 	file.fd.Write(tileMetaLen)
-	// 	file.fd.Write(tileMeta)
+	// 	// // encode data
+	// 	// if buf, err = encodeEntries(esPage); err != nil {
+	// 	// 	return err
+	// 	// }
 
-	// 	for j := 0; j < numPage; j++ {
-	// 		file.fd.Write(pageMetaLen)
-	// 		file.fd.Write(pageMeta)
-	// 		file.fd.Write(entries)
-	// 	}
+	// 	// // write data
+	// 	// if n, err = file.fd.Write(buf); n != len(buf) || err != nil {
+	// 	// 	return ErrPlaceholder
+	// 	// }
+
+	// 	// p.Size = int64(len(buf))
+	// 	// p.Offset = off
+
+	// 	// // update offset
+	// 	// off += int64(n)
+
 	// }
+
+	// // write to fd
+
+	// // fileMetaLen := 0
+	// // file.fd.Write(fileMetaLen)
+	// // file.fd.Write(fileMeta)
+
+	// // for i := 0; i < numTile; i++ {
+
+	// // 	tile = tile[i]
+
+	// // 	file.fd.Write(tileMetaLen)
+	// // 	file.fd.Write(tileMeta)
+
+	// // 	for j := 0; j < numPage; j++ {
+	// // 		file.fd.Write(pageMetaLen)
+	// // 		file.fd.Write(pageMeta)
+	// // 		file.fd.Write(entries)
+	// // 	}
+	// // }
 
 	return nil
 }

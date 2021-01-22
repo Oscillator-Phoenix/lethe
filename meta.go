@@ -3,6 +3,7 @@ package lethe
 import (
 	"bytes"
 	"encoding/binary"
+	"sort"
 )
 
 const (
@@ -165,3 +166,17 @@ func decodeEntries(buf []byte) ([]entry, error) {
 }
 
 // -------------------------------------------------------------------------------------------------
+
+func sortEntriesOnSortKey(es []entry, less func(s, t []byte) bool) {
+	sort.Slice(es, func(i, j int) bool {
+		return less(es[i].key, es[j].key)
+	})
+}
+
+func sortEntriesOnDeleteKey(es []entry, less func(s, t []byte) bool) {
+	sort.Slice(es, func(i, j int) bool {
+		return less(es[i].deleteKey, es[j].deleteKey)
+	})
+}
+
+// ------------------------------------------------------------------------------------

@@ -139,3 +139,68 @@ func TestEncodeEntries(t *testing.T) {
 		t.Fail()
 	}
 }
+
+func TestSortEntriesOnSortKey(t *testing.T) {
+	sLess := DefaultCollectionOptions.SortKeyLess
+
+	es := []entry{
+		{
+			key: []byte("c"),
+		},
+		{
+			key: []byte("b"),
+		},
+		{
+			key: []byte("d"),
+		},
+		{
+			key: []byte("a"),
+		},
+		{
+			key: []byte("a"),
+		},
+	}
+
+	sortEntriesOnSortKey(es, sLess)
+
+	fmt.Println(es)
+
+	for i := 0; i < len(es)-1; i++ {
+		if sLess(es[i+1].key, es[i].key) {
+			t.Fatal()
+		}
+	}
+}
+
+func TestSortEntriesOnDeleteKey(t *testing.T) {
+
+	dLess := DefaultCollectionOptions.DeleteKeyLess
+
+	es := []entry{
+		{
+			deleteKey: []byte("c"),
+		},
+		{
+			deleteKey: []byte("b"),
+		},
+		{
+			deleteKey: []byte("d"),
+		},
+		{
+			deleteKey: []byte("a"),
+		},
+		{
+			deleteKey: []byte("a"),
+		},
+	}
+
+	sortEntriesOnDeleteKey(es, dLess)
+
+	fmt.Println(es)
+
+	for i := 0; i < len(es)-1; i++ {
+		if dLess(es[i+1].deleteKey, es[i].deleteKey) {
+			t.Fatal()
+		}
+	}
+}
