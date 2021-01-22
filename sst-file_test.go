@@ -103,7 +103,7 @@ func TestLoadEntries(t *testing.T) {
 
 	// file
 	file = &sstFile{}
-	file.fd = newMemSSTFileDesc("")
+	file.fd = openMemSSTFileDesc("")
 
 	es = testRandEntries(256)
 	buf, err = encodeEntries(es)

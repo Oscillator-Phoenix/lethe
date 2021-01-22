@@ -3,19 +3,43 @@ package lethe
 import (
 	"bufio"
 	"bytes"
+	"io"
 	"os"
 	"path"
 )
 
+// sstFileDesc is the interface for SST-file IO.
+type sstFileDesc interface {
+	Name() string
+	io.ReaderAt // ReadAt(p []byte, off int64) (n int, err error)
+	io.Writer   // Write(p []byte) (n int, err error)
+	// io.WriterAt  // WriteAt(b []byte, off int64) (n int, err error)
+	io.Closer // Close() error
+}
+
+// -----------------------------------------------------------------------------
+
 // memSSTFileDesc implements sstFileReader interface and sstFileWriter interface.
-// memSSTFileDesc is a mock.
+// memSSTFileDesc is always used as a mock.
 type memSSTFileDesc struct {
 	buf  bytes.Buffer
 	name string
 }
 
-// newMemSSTFileDesc returns a in-memory mock of sstFileDesc
-func newMemSSTFileDesc(name string) sstFileDesc {
+// disk
+type diskSSTFileDesc os.File
+
+// disk with IO buffer
+type diskBufSSTFileDesc struct {
+	name string
+	file *os.File
+	wbuf *bufio.Writer
+}
+
+// -----------------------------------------------------------------------------
+
+// openMemSSTFileDesc returns a in-memory mock of sstFileDesc
+func openMemSSTFileDesc(name string) sstFileDesc {
 	fd := &memSSTFileDesc{}
 
 	// A bytes.Buffer needs no initialization.
@@ -39,7 +63,7 @@ func (fd *memSSTFileDesc) ReadAt(p []byte, off int64) (n int, err error) {
 
 // Close is an io.Closer interface
 func (fd *memSSTFileDesc) Close() error {
-	// do nothing in mock
+	// do nothing
 	return nil
 }
 
@@ -52,14 +76,23 @@ func (fd *memSSTFileDesc) Write(p []byte) (n int, err error) {
 
 // -----------------------------------------------------------------------------
 
-type diskSSTFileDesc struct {
-	name string
-	file *os.File
-	wbuf *bufio.Writer
+func openDiskSSTFileDesc(dirPath, name string) sstFileDesc {
+	// TODO
+
+	fpath := path.Join(dirPath, name)
+
+	f, err := os.OpenFile(fpath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
+	if err != nil {
+		panic(err)
+	}
+
+	return f
 }
 
-func newDiskSSTFileDesc(dirPath, name string) sstFileDesc {
-	fd := &diskSSTFileDesc{}
+// -----------------------------------------------------------------------------
+
+func openDiskBufSSTFileDesc(dirPath, name string) sstFileDesc {
+	fd := &diskBufSSTFileDesc{}
 
 	fd.name = name
 
@@ -76,22 +109,22 @@ func newDiskSSTFileDesc(dirPath, name string) sstFileDesc {
 	return fd
 }
 
-func (fd *diskSSTFileDesc) Name() string {
+func (fd *diskBufSSTFileDesc) Name() string {
 	return fd.name
 }
 
 // ReadAt is an io.ReaderAt interface.
-func (fd *diskSSTFileDesc) ReadAt(p []byte, off int64) (n int, err error) {
+func (fd *diskBufSSTFileDesc) ReadAt(p []byte, off int64) (n int, err error) {
 	return fd.file.ReadAt(p, off)
 }
 
 // Write is an io.Writer interface
-func (fd *diskSSTFileDesc) Write(p []byte) (n int, err error) {
+func (fd *diskBufSSTFileDesc) Write(p []byte) (n int, err error) {
 	return fd.wbuf.Write(p) // buffer write
 }
 
 // Close is an io.Closer interface
-func (fd *diskSSTFileDesc) Close() error {
+func (fd *diskBufSSTFileDesc) Close() error {
 
 	// sync flush
 	if fd.wbuf != nil {

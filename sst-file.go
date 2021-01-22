@@ -3,7 +3,6 @@ package lethe
 import (
 	"bytes"
 	"encoding/json"
-	"io"
 	"lethe/bloomfilter"
 )
 
@@ -16,15 +15,15 @@ type page struct {
 	Offset int64
 	Size   int64
 
+	// TODO
 	// Range Secondary Deletes in a page: in place operation, just shrink size
 	// Range Secondary Deletes in a file: full drop, partial drop
 
-	// --------------------------
-	// not exported
+	// ---------------------------------------------
+	// fields below are not persisted and exported
+	// ---------------------------------------------
 
-	num int
-
-	// As the paper 4.2.3 says, lethe maintains Bloom Filters on primay key at the granularity of page.
+	// As the paper 4.2.3 says, lethe maintains Bloom Filters on sort key at the granularity of page.
 	bloom *bloomfilter.BloomFilter
 }
 
@@ -35,15 +34,6 @@ type deleteTile struct {
 	DeleteKeyMax []byte `json:"da"`
 
 	Pages []page
-}
-
-// Note that os.File implements sstFileDesc interface.
-type sstFileDesc interface {
-	Name() string
-	io.ReaderAt // ReadAt(p []byte, off int64) (n int, err error)
-	io.Writer   // Write(p []byte) (n int, err error)
-	// io.WriterAt  // WriteAt(b []byte, off int64) (n int, err error)
-	io.Closer // Close() error
 }
 
 // sstFile is the in-memory format of SST-file.
@@ -64,8 +54,9 @@ type sstFile struct {
 
 	Tiles []deleteTile
 
-	// --------------------------
-	// not exported
+	// ---------------------------------------------
+	// fields below are not persisted and exported
+	// ---------------------------------------------
 
 	fd sstFileDesc
 }

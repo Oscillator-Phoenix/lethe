@@ -42,15 +42,15 @@ todo
 ### 2.2 TODO Task
 
 1. encode in-memory LSM data structre to disk and rebuild in-memory LSM data structure form disk (Medium, Basic)
-2. change linear search code to binary search code if possible(Medium, Basic)
-3. change `sync.Mutex` to `sync.RWMutex` if possible. (Easy, Performance)
-4. support write option: sync write. (Easy, Usability)
-5. add parallel compaction. (Hard, Performance)
-6. Write Ahead Log: atomic, recovery. (Hard, Performance, Usability)
-7. add read-only `snapshot`: MVCC. (Hard, Performance, Usability)
-8. add actomic wirte `batch`: **Depend on 4**. (Medium, Usability)
-9. support config file, using [toml](https://pkg.go.dev/github.com/BurntSushi/toml) format. (Medium, Usability)
-10. support cli of lethe. (Medium, Usability)
+2. change linear search code to binary search code if possible (Medium, Basic)
+3. change `sync.Mutex` to `sync.RWMutex` if possible (Easy, Performance)
+4. support write option: sync write (Easy, Usability)
+5. add parallel compaction (Hard, Performance)
+6. Write Ahead Log: atomic, recovery (Hard, Performance, Usability)
+7. add read-only `snapshot`(MVCC) (Hard, Performance, Usability)
+8. add actomic wirte `batch`(**depend on 6**) (Medium, Usability)
+9. support config file, using [toml](https://pkg.go.dev/github.com/BurntSushi/toml) format (Medium, Usability)
+10. add cli support for lethe (Medium, Usability)
 11. use `sync.Pool` in [memTable](./memtable.go) to reduce the times of memory allocation (Medium, Performance)
 
 ---

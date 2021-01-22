@@ -126,7 +126,7 @@ func (lsm *collection) buildSSTFile(sstFileName string, es []entry) (*sstFile, e
 	esTiles := packPagesIntoTiles(esPages, lsm.options.NumPagePerDeleteTile)
 
 	// fd
-	file.fd = newMemSSTFileDesc(sstFileName)
+	file.fd = openMemSSTFileDesc(sstFileName) // mock
 	lsm.packTilesIntoSSTFile(file, esTiles)
 
 	return file, nil
@@ -224,6 +224,64 @@ func packPagesIntoTiles(esPages [][]entry, numPagePerTile int) (esTiles [][][]en
 }
 
 func (lsm *collection) packTilesIntoSSTFile(file *sstFile, esTiles [][][]entry) error {
+
+	var (
+		off   int64 = 0
+		err   error
+		dLess = lsm.options.DeleteKeyLess
+	)
+
+	file.Tiles = make([]deleteTile, len(esTiles))
+	for tileID := 0; tileID < len(esTiles); tileID++ {
+		file.Tiles[tileID].Pages = make([]page, len(esTiles[tileID]))
+	}
+
+	for tileID := 0; tileID < len(esTiles); tileID++ {
+
+		for pageID := 0; pageID < len(esTiles[tileID]); pageID++ {
+
+			var (
+				esPage       []entry = esTiles[tileID][pageID]
+				p            *page   = &file.Tiles[tileID].Pages[pageID]
+				buf          []byte
+				deleteKeyMin []byte = esPage[0].deleteKey // init value
+				deleteKeyMax []byte = esPage[0].deleteKey // init value
+			)
+
+			// find min & max deleteKey in a page
+			for i := 0; i < len(esPage); i++ {
+				if dLess(esPage[i].deleteKey, deleteKeyMin) {
+					deleteKeyMin = esPage[i].deleteKey
+				}
+
+				if dLess(deleteKeyMax, esPage[i].deleteKey) {
+					deleteKeyMax = esPage[i].deleteKey
+				}
+			}
+
+			// encode data
+			buf, err = encodeEntries(esPage)
+			if err != nil {
+				return err
+			}
+
+			// write data
+			n, err := file.fd.Write(buf)
+			if n != len(buf) || err != nil {
+				return ErrPlaceholder
+			}
+
+			// build page structure
+			p.SortKeyMin = esPage[0].key             // finish value
+			p.SortKeyMax = esPage[len(esPage)-1].key // finish value
+			p.DeleteKeyMin = deleteKeyMin
+			p.DeleteKeyMax = deleteKeyMax
+			p.Size = int64(len(buf))
+			p.Offset = off
+
+			off += int64(n)
+		}
+	}
 
 	// write to fd
 
