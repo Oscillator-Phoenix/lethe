@@ -287,7 +287,7 @@ func (lsm *collection) splitToTiles(es []entry) []persistTile {
 
 			// now esTile is sorted on delete key
 			pt.tile.DeleteKeyMin = esTile[0].deleteKey
-			pt.tile.DeleteKeyMax = esTile[len(esTile)].deleteKey
+			pt.tile.DeleteKeyMax = esTile[len(esTile)-1].deleteKey
 
 			pt.ppages = lsm.splitToPages(esTile)
 			pts = append(pts, pt)
@@ -299,49 +299,49 @@ func (lsm *collection) splitToTiles(es []entry) []persistTile {
 
 func (lsm *collection) packTilesIntoFile(file *sstFile, pts []persistTile) error {
 
-	// var (
-	// 	off int64 = 0
-	// )
+	var (
+		off int64 = 0
+	)
 
-	// 	// write
+	file.Tiles = make([]deleteTile, len(pts))
 
-	// 	// // encode data
-	// 	// if buf, err = encodeEntries(esPage); err != nil {
-	// 	// 	return err
-	// 	// }
+	for i := 0; i < len(pts); i++ {
 
-	// 	// // write data
-	// 	// if n, err = file.fd.Write(buf); n != len(buf) || err != nil {
-	// 	// 	return ErrPlaceholder
-	// 	// }
+		pt := &pts[i]
 
-	// 	// p.Size = int64(len(buf))
-	// 	// p.Offset = off
+		pt.tile.Pages = make([]page, len(pt.ppages))
 
-	// 	// // update offset
-	// 	// off += int64(n)
+		for j := 0; j < len(pt.ppages); j++ {
 
-	// }
+			// encode
+			buf, err := encodeEntries(pt.ppages[j].es)
+			if err != nil {
+				return err
+			}
 
-	// // write to fd
+			// write
+			n, err := file.fd.Write(buf)
+			if n != len(buf) {
+				return ErrPlaceholder
+			}
+			if err != nil {
+				return err
+			}
 
-	// // fileMetaLen := 0
-	// // file.fd.Write(fileMetaLen)
-	// // file.fd.Write(fileMeta)
+			// record size and offset
+			pt.ppages[j].p.Size = int64(len(buf))
+			pt.ppages[j].p.Offset = off
 
-	// // for i := 0; i < numTile; i++ {
+			// the page is is assembled completely
+			pt.tile.Pages[j] = pt.ppages[j].p
 
-	// // 	tile = tile[i]
+			// update offset
+			off += int64(n)
+		}
 
-	// // 	file.fd.Write(tileMetaLen)
-	// // 	file.fd.Write(tileMeta)
-
-	// // 	for j := 0; j < numPage; j++ {
-	// // 		file.fd.Write(pageMetaLen)
-	// // 		file.fd.Write(pageMeta)
-	// // 		file.fd.Write(entries)
-	// // 	}
-	// // }
+		// the delelte-tile is assembled completely
+		file.Tiles[i] = pt.tile
+	}
 
 	return nil
 }
