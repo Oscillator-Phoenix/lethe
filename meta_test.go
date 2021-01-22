@@ -1,8 +1,8 @@
 package lethe
 
 import (
-	"bytes"
 	"fmt"
+	"math/rand"
 	"testing"
 )
 
@@ -36,35 +36,106 @@ func TestEntryLen(t *testing.T) {
 	fmt.Printf("valueLen  %d\n", valueLen)
 }
 
-func TestEntrySerialization(t *testing.T) {
-
-	e := &entry{
+var (
+	exampleEntry1 = entry{
 		key:       []byte("key"),
 		value:     []byte("value"),
 		deleteKey: []byte("deleteKey"),
 		meta:      keyMeta{1111, 2333},
 	}
 
-	buf, _ := encodeEntry(e)
-	if len(buf) != persistFormatLen(e) {
-		t.Fail()
+	exampleEntry2 = entry{
+		key:       []byte("key2"),
+		value:     []byte("value2"),
+		deleteKey: []byte("deleteKey2"),
+		meta:      keyMeta{666, 555},
 	}
 
-	e2 := &entry{}
-	if err := decodeEntry(buf, e2); err != nil {
-		t.Fail()
+	exampleEntry3 = entry{
+		key:       []byte("key3"),
+		value:     []byte{},
+		deleteKey: []byte("deleteKey3"),
+		meta:      keyMeta{666, 999999},
 	}
 
-	if !bytes.Equal(e.key, e2.key) {
+	exampleEntries = []entry{
+		exampleEntry1,
+		exampleEntry2,
+	}
+)
+
+func testRandEntries(num int) []entry {
+	es := make([]entry, num)
+	for i := 0; i < num; i++ {
+		es[i] = exampleEntries[rand.Intn(len(exampleEntries))]
+	}
+	return es
+}
+
+func testEntriesEqual(es, es2 []entry) bool {
+
+	if len(es) != len(es2) {
+		return false
+	}
+
+	for i := 0; i < len(es); i++ {
+		if !entryEqual(&es[i], &es2[i]) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func TestEncodeEntry(t *testing.T) {
+
+	var (
+		e   entry
+		e2  entry
+		err error
+		buf []byte
+	)
+
+	e = exampleEntry1
+
+	buf, err = encodeEntry(&e)
+	if err != nil {
+		t.Fatal()
+	}
+	if len(buf) != persistFormatLen(&e) {
+		t.Fatal()
+	}
+
+	e2, err = decodeEntry(buf)
+	if err != nil {
+		t.Fatal()
+	}
+
+	if !entryEqual(&e, &e2) {
 		t.Fail()
 	}
-	if !bytes.Equal(e.value, e2.value) {
-		t.Fail()
+}
+
+func TestEncodeEntries(t *testing.T) {
+
+	var (
+		buf []byte
+		es  []entry
+		es2 []entry
+		err error
+	)
+
+	es = testRandEntries(128)
+
+	buf, err = encodeEntries(es)
+	if err != nil {
+		t.Fatal()
 	}
-	if !bytes.Equal(e.deleteKey, e2.deleteKey) {
-		t.Fail()
-	}
-	if (e.meta.seqNum != e2.meta.seqNum) || (e.meta.opType != e2.meta.opType) {
+
+	es2, err = decodeEntries(buf)
+	fmt.Println("decoded entries len", len(es2))
+
+	if !testEntriesEqual(es, es2) {
 		t.Fail()
 	}
 }

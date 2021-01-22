@@ -1,6 +1,9 @@
 package lethe
 
-import "encoding/binary"
+import (
+	"bytes"
+	"encoding/binary"
+)
 
 const (
 	opBase uint64 = 0                  // 0x0000000000000000
@@ -22,6 +25,33 @@ type entry struct {
 	meta      keyMeta
 }
 
+func entryEqual(e, e2 *entry) bool {
+
+	if !bytes.Equal(e.key, e2.key) {
+		return false
+	}
+
+	if !bytes.Equal(e.value, e2.value) {
+		return false
+
+	}
+	if !bytes.Equal(e.deleteKey, e2.deleteKey) {
+		return false
+
+	}
+	if (e.meta.seqNum != e2.meta.seqNum) || (e.meta.opType != e2.meta.opType) {
+		return false
+	}
+
+	return true
+}
+
+// ------------------------------------------------------------------------------------
+// persist format
+// ------------------------------------------------------------------------------------
+// [ lenMeta(10) | seqNum(10) | opType(10) | key | value | deleteKey ]
+// ------------------------------------------------------------------------------------
+
 const (
 	maxSortKeyBytesLen   int = (1 << 16) - 1
 	maxDeleteKeyBytesLen int = (1 << 16) - 1
@@ -39,12 +69,6 @@ const (
 const (
 	uint64EncodeLen = binary.MaxVarintLen64 // const 10
 )
-
-// ------------------------------------------------------------------------------------
-// persist format
-// ------------------------------------------------------------------------------------
-// [ lenMeta(10) | seqNum(10) | opType(10) | key | value | deleteKey ]
-// ------------------------------------------------------------------------------------
 
 // persistFormatLen returns the length of persistent format.
 // pure function
@@ -80,7 +104,9 @@ func encodeEntry(e *entry) (buf []byte, err error) {
 
 // decodeEntry decodes entry from persistent format.
 // Note that decodeEntrys will NOT allocate new buffers but occupy the input buf.
-func decodeEntry(buf []byte, e *entry) (err error) {
+func decodeEntry(buf []byte) (entry, error) {
+
+	e := entry{}
 
 	lenMeta, _ := binary.Uvarint(buf[0*uint64EncodeLen : 1*uint64EncodeLen])
 	seqNum, _ := binary.Uvarint(buf[1*uint64EncodeLen : 2*uint64EncodeLen])
@@ -99,7 +125,43 @@ func decodeEntry(buf []byte, e *entry) (err error) {
 		opType: opType,
 	}
 
-	return nil
+	return e, nil
+}
+
+func encodeEntries(es []entry) (buf []byte, err error) {
+
+	buf = []byte{}
+
+	for i := 0; i < len(es); i++ {
+
+		b, err := encodeEntry(&es[i])
+		if err != nil {
+			return nil, err
+		}
+
+		buf = append(buf, b...)
+	}
+
+	return buf, nil
+}
+
+func decodeEntries(buf []byte) ([]entry, error) {
+
+	es := []entry{}
+
+	start := 0
+	for start < len(buf) {
+
+		e, err := decodeEntry(buf[start:])
+		if err != nil {
+			return nil, err
+		}
+
+		es = append(es, e)
+		start += persistFormatLen(&e)
+	}
+
+	return es, nil
 }
 
 // -------------------------------------------------------------------------------------------------

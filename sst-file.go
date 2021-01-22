@@ -2,19 +2,19 @@ package lethe
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"lethe/bloomfilter"
 )
 
 type page struct {
-	Num    int
+	SortKeyMin   []byte `json:"si"`
+	SortKeyMax   []byte `json:"sa"`
+	DeleteKeyMin []byte `json:"di"`
+	DeleteKeyMax []byte `json:"da"`
+
 	Offset int64
 	Size   int64
-
-	SortKeyMin   []byte
-	SortKeyMax   []byte
-	DeleteKeyMin []byte
-	DeleteKeyMax []byte
 
 	// Range Secondary Deletes in a page: in place operation, just shrink size
 	// Range Secondary Deletes in a file: full drop, partial drop
@@ -22,15 +22,17 @@ type page struct {
 	// --------------------------
 	// not exported
 
+	num int
+
 	// As the paper 4.2.3 says, lethe maintains Bloom Filters on primay key at the granularity of page.
 	bloom *bloomfilter.BloomFilter
 }
 
 type deleteTile struct {
-	SortKeyMin   []byte
-	SortKeyMax   []byte
-	DeleteKeyMin []byte
-	DeleteKeyMax []byte
+	SortKeyMin   []byte `json:"si"`
+	SortKeyMax   []byte `json:"sa"`
+	DeleteKeyMin []byte `json:"di"`
+	DeleteKeyMax []byte `json:"da"`
 
 	Pages []page
 }
@@ -48,10 +50,10 @@ type sstFileDesc interface {
 type sstFile struct {
 	Name string
 
-	SortKeyMin   []byte
-	SortKeyMax   []byte
-	DeleteKeyMin []byte
-	DeleteKeyMax []byte
+	SortKeyMin   []byte `json:"si"`
+	SortKeyMax   []byte `json:"sa"`
+	DeleteKeyMin []byte `json:"di"`
+	DeleteKeyMax []byte `json:"da"`
 
 	// the age of oldest tomb in file, Unix seconds
 	AgeOldestTomb uint32
@@ -72,14 +74,24 @@ type sstFile struct {
 // encode & decode sstFile
 // -----------------------------------------------------------------------------
 
-func encodeSSTFile(file *sstFile) (buf []byte) {
-	// TODO
-	return nil
+func encodeSSTFile(file *sstFile) (buf []byte, err error) {
+
+	js, err := json.Marshal(file)
+	if err != nil {
+		return nil, err
+	}
+
+	return js, nil
 }
 
 func decodeSSTFile(buf []byte) (*sstFile, error) {
-	// TODO
-	return nil, nil
+
+	var file sstFile
+	if err := json.Unmarshal(buf, &file); err != nil {
+		return nil, err
+	}
+
+	return &file, nil
 }
 
 // -----------------------------------------------------------------------------
@@ -103,21 +115,12 @@ func (p *page) bloomFilterExists(key []byte) bool {
 
 func loadEntries(file *sstFile, p *page) ([]entry, error) {
 	buf := make([]byte, p.Size)
-	es := make([]entry, p.Num)
 
 	if _, err := file.fd.ReadAt(buf, p.Offset); err != nil {
 		return nil, err
 	}
 
-	off := 0
-	for i := 0; i < p.Num; i++ {
-		if err := decodeEntry(buf[off:], &es[i]); err != nil {
-			return nil, err
-		}
-		off += persistFormatLen(&es[i])
-	}
-
-	return nil, nil
+	return decodeEntries(buf)
 }
 
 // -----------------------------------------------------------------------------
