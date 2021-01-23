@@ -33,7 +33,7 @@ func newRandSeed() {
 
 func genOneBytes(bytesLen int) []byte {
 	// str := fmt.Sprintf("%0*v", bytesLen, rand.Int())
-	str := fmt.Sprintf("%0*v", bytesLen, rand.Intn(1<<20))
+	str := fmt.Sprintf("%0*v", bytesLen, rand.Intn(1<<18))
 
 	return []byte(str)[:bytesLen]
 }

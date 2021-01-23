@@ -110,8 +110,7 @@ type WriteOptions struct {
 	// define some write options if necessary
 }
 
-// A Collection represents an ordered mapping of key-val entries,
-// where a Collection is snapshot'able and atomically updatable.
+// A Collection represents an ordered mapping of key-val entries.
 type Collection interface {
 
 	// Close synchronously stops background tasks and releases resources.

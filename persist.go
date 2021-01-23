@@ -58,9 +58,8 @@ func (iq *immutableQueue) Get(key []byte) (found bool, value []byte, meta keyMet
 func (lsm *collection) persistDaemon(ctx context.Context) {
 	for {
 		select {
-		case task := <-lsm.persistTrigger:
+		case <-lsm.persistTrigger:
 			{
-				log.Printf("[persist] trigger task [%v], immutable queue len [%d]\n", task, lsm.immutableQ.size())
 				lsm.persistOne()
 			}
 		case <-ctx.Done():
@@ -73,6 +72,9 @@ func (lsm *collection) persistDaemon(ctx context.Context) {
 }
 
 func (lsm *collection) persistOne() error {
+
+	log.Printf("[persist] trigger, immutable queue len [%d]\n", lsm.immutableQ.size())
+
 	// pop immutableQ and add SST-file should be packed to an atomic action
 
 	// This locking will block the get from immutableQ
@@ -96,8 +98,6 @@ func (lsm *collection) persistOne() error {
 	sstFileName := fmt.Sprintf("%s", uuid.New())
 	sstFile, _ := lsm.buildSSTFile(sstFileName, es) // time cost heavily
 
-	log.Printf("[persist] building SST-file[%s]\n", sstFileName)
-
 	// add the new sstFile to the top peristed level
 	lsm.addSSTFileOnLevel(lsm.levels[0], sstFile)
 
@@ -108,6 +108,8 @@ func (lsm *collection) persistOne() error {
 
 	// force GC to release immutable memTable
 	runtime.GC()
+
+	log.Printf("[persist] build SST-file [%s]\n", sstFileName)
 
 	return nil
 }

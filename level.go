@@ -95,6 +95,9 @@ func (lsm *collection) addSSTFileOnLevel(lv *level, file *sstFile) {
 	lv.Unlock()
 
 	lv.files = append(lv.files, file)
+
+	// TODO
+	// SO compaction if necessary
 }
 
 // -----------------------------------------------------------------------------

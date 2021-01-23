@@ -151,7 +151,7 @@ $$
 d_i = T \cdot d_{i-1}
 $$
 
-​ where $T$ is the level size ratio.
+ where $T$ is the level size ratio.
 
 ##### 2.4.1.3 Meta Data of FADE
 
