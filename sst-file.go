@@ -120,14 +120,9 @@ func loadEntries(file *sstFile, p *page) ([]entry, error) {
 
 func (lsm *collection) getFromSSTFile(file *sstFile, key []byte) (found bool, value []byte, meta keyMeta) {
 
-	// Note that there are no duplicate keys in a SST-File, i.e. all keys in a SST-File are unique.
+	// Note that there are no duplicate keys in a SST-File, i.e. each key is the SST-File is unique.
 
 	less := lsm.options.SortKeyLess
-
-	// sstFile fence pointer check (i.e. SortKeyMin <= key <= SortKeyMax)
-	if less(key, file.SortKeyMin) || less(file.SortKeyMax, key) {
-		return false, nil, meta
-	}
 
 	// get from a page
 	pageGet := func(p *page) (found bool, value []byte, meta keyMeta) {
@@ -145,11 +140,18 @@ func (lsm *collection) getFromSSTFile(file *sstFile, key []byte) (found bool, va
 		// load data form disk...
 		es, _ := loadEntries(file, p)
 
-		// TODO
 		// binary search because entries within every page are sorted on sort key
-		for i := 0; i < len(es); i++ {
-			if bytes.Equal(es[i].key, key) {
-				return true, es[i].value, es[i].meta
+		left := 0
+		right := len(es) - 1
+		for left <= right {
+			mid := (left + right) / 2
+			if bytes.Equal(es[mid].key, key) {
+				return true, es[mid].value, es[mid].meta
+			}
+			if less(key, es[mid].key) {
+				right = mid - 1
+			} else {
+				left = mid + 1
 			}
 		}
 
@@ -159,11 +161,6 @@ func (lsm *collection) getFromSSTFile(file *sstFile, key []byte) (found bool, va
 
 	// get from a delete-tile
 	tileGet := func(dt *deleteTile) (found bool, value []byte, meta keyMeta) {
-
-		// delet tile fence pointer check (i.e. SortKeyMin <= key <= SortKeyMax)
-		if less(key, dt.SortKeyMin) || less(dt.SortKeyMax, key) {
-			return false, nil, meta
-		}
 
 		// linear search because pages within a delete-tile are sorted on delete key but not sort key
 		for i := 0; i < len(dt.Pages); i++ {
@@ -179,15 +176,34 @@ func (lsm *collection) getFromSSTFile(file *sstFile, key []byte) (found bool, va
 		return false, nil, meta
 	}
 
-	// TODO
-	// binary search because delete tiles within a sstfile are sorted on sort key
-	for i := 0; i < len(file.Tiles); i++ {
+	// -------------------------------------------------------------------------
 
-		if found, value, meta = tileGet(&file.Tiles[i]); found {
-			return true, value, meta
+	// sstFile fence pointer check (i.e. SortKeyMin <= key <= SortKeyMax)
+	if less(key, file.SortKeyMin) || less(file.SortKeyMax, key) {
+		return false, nil, meta
+	}
+
+	// binary search because delete tiles within a sstfile are sorted on sort key
+	left := 0
+	right := len(file.Tiles) - 1
+	for left <= right {
+
+		mid := (left + right) / 2
+
+		if less(key, file.Tiles[mid].SortKeyMin) {
+			right = mid - 1
+			continue
+		}
+		if less(file.Tiles[mid].SortKeyMax, key) {
+			left = mid + 1
+			continue
 		}
 
-		// If key is not found and not deleted, keep searching in next delete-tiles
+		// SortKeyMin <= key <= SortKeyMax
+		if found, value, meta = tileGet(&file.Tiles[mid]); found {
+			return true, value, meta
+		}
+		return false, nil, meta
 	}
 
 	// key is not found in this SST-file

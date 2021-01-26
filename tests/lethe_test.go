@@ -18,7 +18,8 @@ func TestGetPutDelSerial(t *testing.T) {
 
 	copts := lethe.DefaultCollectionOptions
 	copts.MemTableSizeLimit = 1 << 20 // 2MB
-	copts.StandardPageSize = 16 << 10 // 16KB
+	copts.StandardPageSize = 4 << 10  // 8KB
+	copts.NumPagePerDeleteTile = 8
 
 	c, err := lethe.NewCollection(copts)
 	if err != nil {
@@ -58,7 +59,7 @@ func TestGetPutDelSerial(t *testing.T) {
 	fmt.Println("Put done")
 
 	fmt.Printf("\nWaiting...\n\n")
-	time.Sleep(1 * time.Second)
+	time.Sleep(5 * time.Second)
 
 	// Get After Put
 	fmt.Println("Get After Put ...")
