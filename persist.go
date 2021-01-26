@@ -99,7 +99,7 @@ func (lsm *collection) persistOne() error {
 	sstFile, _ := lsm.buildSSTFile(sstFileName, es) // time cost heavily
 
 	// add the new sstFile to the top peristed level
-	lsm.addSSTFileOnLevel(lsm.levels[0], sstFile)
+	lsm.addFileToLevel(lsm.levels[0], sstFile)
 
 	// when the persistence of head done, pop the head from queue
 	lsm.immutableQ.imts = lsm.immutableQ.imts[1:]

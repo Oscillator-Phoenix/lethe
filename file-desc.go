@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"sync"
 )
 
 // sstFileDesc is the interface for SST-file IO.
@@ -38,6 +39,8 @@ type diskBufSSTFileDesc struct {
 
 // -----------------------------------------------------------------------------
 
+var _memFds sync.Map
+
 // openMemSSTFileDesc returns a in-memory mock of sstFileDesc
 func openMemSSTFileDesc(name string) sstFileDesc {
 	fd := &memSSTFileDesc{}
@@ -45,6 +48,8 @@ func openMemSSTFileDesc(name string) sstFileDesc {
 	// A bytes.Buffer needs no initialization.
 
 	fd.name = name
+
+	_memFds.Store(name, fd)
 
 	return fd
 }
@@ -63,7 +68,9 @@ func (fd *memSSTFileDesc) ReadAt(p []byte, off int64) (n int, err error) {
 
 // Close is an io.Closer interface
 func (fd *memSSTFileDesc) Close() error {
-	// do nothing
+
+	_memFds.Delete(fd.name)
+
 	return nil
 }
 

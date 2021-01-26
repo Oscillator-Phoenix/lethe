@@ -55,7 +55,7 @@ func newCollection(options *CollectionOptions) *collection {
 
 	// create in-memory table, i.e. `Level 0`
 	lsm.curMemTable = newMemTable(lsm.options.SortKeyLess)
-	log.Println("add new level 0 which is an in-memory table")
+	log.Printf("add an in-memory level-0 (limit %s)\n", beautifulNumByte(lsm.options.MemTableSizeLimit))
 
 	// create L-1 persist levels, i.e. `Level 1` ~ `Level L-1`
 	lsm.levels = []*level{}

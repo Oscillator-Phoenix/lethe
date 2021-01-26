@@ -17,8 +17,8 @@ func init() {
 func TestGetPutDelSerial(t *testing.T) {
 
 	copts := lethe.DefaultCollectionOptions
-	copts.MemTableSizeLimit = 1 << 20 // 2MB
-	copts.StandardPageSize = 4 << 10  // 8KB
+	copts.MemTableSizeLimit = 1 << 20 // 1MB
+	copts.StandardPageSize = 4 << 10  // 4KB
 	copts.NumPagePerDeleteTile = 8
 
 	c, err := lethe.NewCollection(copts)
@@ -45,6 +45,9 @@ func TestGetPutDelSerial(t *testing.T) {
 		if v != nil && err != lethe.ErrKeyNotFound {
 			t.Fatalf("Get\n")
 		}
+		if (i+1)%(batchSize/10) == 0 {
+			fmt.Printf("tests %d / %d passed\n", i+1, batchSize)
+		}
 	}
 	fmt.Println("Get before Put done")
 
@@ -54,7 +57,9 @@ func TestGetPutDelSerial(t *testing.T) {
 		if err = c.Put(ks[i], vs[i], []byte("..."), wopts); err != nil {
 			t.Fatal("Put\n")
 		}
-		// t.Logf("Put [%s] [%s]\n", string(ks[i]), string(vs[i]))
+		if (i+1)%(batchSize/10) == 0 {
+			fmt.Printf("tests %d / %d passed\n", i+1, batchSize)
+		}
 	}
 	fmt.Println("Put done")
 
@@ -88,6 +93,9 @@ func TestGetPutDelSerial(t *testing.T) {
 		if err := c.Del(ks[i], wopts); err != nil {
 			t.Fatalf("Del: %v\n", err)
 		}
+		if (i+1)%(batchSize/10) == 0 {
+			fmt.Printf("tests %d / %d passed\n", i+1, batchSize)
+		}
 	}
 	fmt.Println("Del done")
 
@@ -98,6 +106,9 @@ func TestGetPutDelSerial(t *testing.T) {
 		if v != nil && err != lethe.ErrKeyNotFound {
 			t.Logf("%v\n", v)
 			t.Fatalf("Get: expected nil and %v\n", lethe.ErrKeyNotFound)
+		}
+		if (i+1)%(batchSize/10) == 0 {
+			fmt.Printf("tests %d / %d passed\n", i+1, batchSize)
 		}
 	}
 	fmt.Println("Get After Del done")
