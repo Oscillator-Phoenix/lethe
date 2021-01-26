@@ -20,9 +20,8 @@ type collection struct {
 	// status
 	stats *CollectionStats
 
-	// increater sequentce number of operation on collection
-	seqNumInc uint64
-	timeStamp uint64
+	// sequentce number of operation on collection
+	seqNum uint64
 
 	// in-memory table
 	curMemTable      *memTable // `Level 0`
@@ -77,8 +76,7 @@ func newCollection(options *CollectionOptions) *collection {
 	go lsm.compactDaemon(daemonCtx)
 
 	// time stamp update daemon
-	atomic.StoreUint64(&lsm.timeStamp, uint64(time.Now().Unix())) // seconds
-	atomic.StoreUint64(&lsm.seqNumInc, 0)
+	lsm.resetSeqNumNForNow()
 	go lsm.timeStampUpdateDaemon(daemonCtx)
 
 	return lsm
@@ -108,8 +106,7 @@ func (lsm *collection) timeStampUpdateDaemon(ctx context.Context) {
 		select {
 		case <-ticker.C:
 			{
-				atomic.StoreUint64(&lsm.timeStamp, uint64(time.Now().Unix()))
-				atomic.StoreUint64(&lsm.seqNumInc, 0) // reset seqNumInc
+				lsm.resetSeqNumNForNow()
 			}
 		case <-ctx.Done():
 			{
@@ -120,11 +117,19 @@ func (lsm *collection) timeStampUpdateDaemon(ctx context.Context) {
 	}
 }
 
+// reset seqNum using current real time
+func (lsm *collection) resetSeqNumNForNow() {
+	// high 32: now Unix time stamp in seconds
+	// low  32: 0
+	seqNum := ((uint64(time.Now().Unix()) & 0xFFFFFFFF) << 32) | (0 & 0xFFFFFFFF)
+	atomic.StoreUint64(&lsm.seqNum, seqNum)
+}
+
 // getSeqNum atomically increates `lsm.seqNumInc` and returns the new value.
 // Unix-like operating systems often record time as a 32-bit count of seconds.
 // Here, lsm.timeStamp is valid for one hundred years until 2100 A.D., then it will overflow.
 func (lsm *collection) getSeqNum() uint64 {
-	return ((atomic.LoadUint64(&lsm.timeStamp) << 32) | atomic.AddUint64(&lsm.seqNumInc, 1))
+	return atomic.AddUint64(&lsm.seqNum, 1)
 }
 
 // Get retrieves a value by iterating over all the segments within
