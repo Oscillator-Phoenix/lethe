@@ -25,7 +25,6 @@ type collection struct {
 
 	// in-memory table
 	curMemTable      *memTable // `Level 0`
-	curMemTableMutex sync.Mutex
 
 	// persisted levels
 	levels []*level // `Level 1` ~ `Level L-1`
